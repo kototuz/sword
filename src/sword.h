@@ -3,6 +3,8 @@
 
 #include <kovsh.h>
 
+#define REPOSITORIES_PATH "resources/repositories"
+
 typedef enum {
     KNOWLEDGE_LEVEL_OK,
     KNOWLEDGE_LEVEL_NORMAL,
