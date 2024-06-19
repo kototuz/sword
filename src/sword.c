@@ -4,13 +4,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 static int menu_command_help(ArgValueCopy *args);
 static int menu_command_repo_list(ArgValueCopy *args);
 static int menu_command_repo_new(ArgValueCopy *args);
 static int menu_command_repo_del(ArgValueCopy *args);
 
-static int make_repo_path_str(const StrView name, char **result);
+static Errno make_repo_path_str(const StrView name, char **result);
 
 const CommandSet menu_command_set = {
     .len = 2,
@@ -76,6 +77,7 @@ static int menu_command_help(ArgValueCopy *args)
     return 0;
 }
 
+// TODO: the command shows also ".", ".."
 static int menu_command_repo_list(ArgValueCopy *args)
 {
     (void) args;
@@ -84,8 +86,8 @@ static int menu_command_repo_list(ArgValueCopy *args)
 
     DIR *dir = opendir(REPOSITORIES_PATH);
     if (!dir) {
-        fputs("ERROR: could not open the directory\n", stderr);
-        return 1;
+        perror("ERROR: could not list repositories");
+        return errno;
     }
     
     while ((de = readdir(dir)) != NULL) {
@@ -99,12 +101,15 @@ static int menu_command_repo_list(ArgValueCopy *args)
 static int menu_command_repo_new(ArgValueCopy *args)
 {
     char *new_repo_path;
-    int err = make_repo_path_str(args[0].value.data.as_str, &new_repo_path);
-    if (err != 0) return err;
+    Errno err = make_repo_path_str(args[0].value.data.as_str, &new_repo_path);
+    if (err != 0) {
+        fprintf(stderr, "ERROR: could not create new repo: %s\n", strerror(err));
+        return err;
+    }
 
     FILE *new_repo = fopen(new_repo_path, "w");
     if (!new_repo) {
-        fputs("ERROR: could not create new repo\n", stderr);
+        perror("ERROR: could not create new repo");
         free(new_repo_path);
         return 1;
     }
@@ -119,8 +124,8 @@ static int menu_command_repo_del(ArgValueCopy *args)
     int err = make_repo_path_str(args[0].value.data.as_str, &repo_path);
     if (err != 0) return err;
 
-    if (remove(repo_path) == 0) {
-        fputs("ERROR: could not delete the repo\n", stderr);
+    if (remove(repo_path) == -1) {
+        perror("ERROR: could not delete the repo");
         free(repo_path);
         return 1;
     }
@@ -129,10 +134,10 @@ static int menu_command_repo_del(ArgValueCopy *args)
     return 0;
 }
 
-static int make_repo_path_str(const StrView name, char **result)
+static Errno make_repo_path_str(const StrView name, char **result)
 {
     char *new_repo_path = (char *) malloc(sizeof(REPOSITORIES_PATH) + name.len);
-    if (!new_repo_path) return 1;
+    if (!new_repo_path) return errno;
 
     memcpy(new_repo_path, REPOSITORIES_PATH, sizeof(REPOSITORIES_PATH));
     new_repo_path[sizeof(REPOSITORIES_PATH)-1] = '/';

@@ -21,6 +21,8 @@ typedef struct {
     size_t cards_len;
 } FlashCardRepo;
 
+typedef int Errno;
+
 extern const CommandSet menu_command_set;
 extern const CommandSet exam_command_set;
 
