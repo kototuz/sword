@@ -6,4 +6,4 @@ SRC="src/main.c src/sword.c"
 LIB_SRC=kovsh/src/*.c
 LIB_INCLUDE=kovsh/src
 
-$CC $CFLAGS -o sword $SRC $LIB_SRC -I$LIB_INCLUDE
+$CC $CFLAGS -o sword.out $SRC $LIB_SRC -I$LIB_INCLUDE
