@@ -2,6 +2,7 @@
 #define SWORD_H
 
 #include <kovsh.h>
+#include <stdio.h>
 
 #define REPOSITORIES_PATH "resources/repositories"
 

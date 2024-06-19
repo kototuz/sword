@@ -10,11 +10,14 @@ static int menu_command_help(ArgValueCopy *args);
 static int menu_command_repo_list(ArgValueCopy *args);
 static int menu_command_repo_new(ArgValueCopy *args);
 static int menu_command_repo_del(ArgValueCopy *args);
+static int menu_command_cards_list(ArgValueCopy *args);
+static int menu_command_cards_add(ArgValueCopy *args);
 
+// TODO: return `FILE*` instead of `char*`
 static Errno make_repo_path_str(const StrView name, char **result);
 
 const CommandSet menu_command_set = {
-    .len = 2,
+    .len = 3,
     .items = (Command[]){
         {
             .name = STRV_LIT("help"),
@@ -49,6 +52,42 @@ const CommandSet menu_command_set = {
                         {
                             .name = STRV_LIT("name"),
                             .usage = "Repo name",
+                            .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
+                        }
+                    }
+                }
+            }
+        },
+        {
+            .name = STRV_LIT("card"),
+            .desc = "List cards from specific repo",
+            .fn = menu_command_cards_list,
+            .args_len = 1,
+            .args = (Arg[]){
+                {
+                    .name = STRV_LIT("repo"),
+                    .usage = "Repository",
+                    .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR,
+                }
+            },
+            .subcommands.len = 1,
+            .subcommands.items = (Command[]){
+                {
+                    .name = STRV_LIT("add"),
+                    .desc = "Add a new card to a specific repo",
+                    .fn = menu_command_cards_add,
+                    .args_len = 3,
+                    .args = (Arg[]){
+                        {
+                            .name = STRV_LIT("repo"),
+                            .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
+                        },
+                        {
+                            .name = STRV_LIT("text"),
+                            .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
+                        },
+                        {
+                            .name = STRV_LIT("transcript"),
                             .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
                         }
                     }
@@ -98,6 +137,7 @@ static int menu_command_repo_list(ArgValueCopy *args)
     return 0;
 }
 
+// TODO: create the `resources/repositories` folder if it doesn't exist
 static int menu_command_repo_new(ArgValueCopy *args)
 {
     char *new_repo_path;
@@ -144,5 +184,58 @@ static Errno make_repo_path_str(const StrView name, char **result)
     strncat(new_repo_path, name.items, name.len);
 
     *result = new_repo_path;
+    return 0;
+}
+
+static int menu_command_cards_list(ArgValueCopy *args)
+{
+    char *repo_path;
+    Errno err = make_repo_path_str(args[0].value.data.as_str, &repo_path);
+    if (err != 0) {
+        fprintf(stderr, "ERROR: could not list cards from the repo: %s\n",
+                strerror(err));
+        free(repo_path);
+        return err;
+    }
+
+    FILE *repo = fopen(repo_path, "r");
+    if (!repo) {
+        perror("ERROR: could not list cards from the repo");
+        free(repo_path);
+        return errno;
+    }
+
+    char card_buf[100];
+    while (fgets(card_buf, 100, repo) != NULL)
+        puts(card_buf);
+
+    free(repo_path);
+    return 0;
+}
+
+static int menu_command_cards_add(ArgValueCopy *args)
+{
+    char *repo_path;
+    Errno err = make_repo_path_str(args[0].value.data.as_str, &repo_path);
+    if (err != 0) {
+        fprintf(stderr, "ERROR: could not add card: %s\n",
+                strerror(err));
+        free(repo_path);
+        return err;
+    }
+
+    FILE *repo = fopen(repo_path, "a");
+    if (!repo) {
+        perror("ERROR: could not add card");
+        free(repo_path);
+        return errno;
+    }
+
+    fprintf(repo, STRV_FMT"="STRV_FMT"\n",
+            STRV_ARG(args[1].value.data.as_str),
+            STRV_ARG(args[2].value.data.as_str));
+
+    free(repo_path);
+    fclose(repo);
     return 0;
 }
