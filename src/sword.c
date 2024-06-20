@@ -13,8 +13,10 @@ static int menu_command_repo_del(ArgValueCopy *args);
 static int menu_command_cards_list(ArgValueCopy *args);
 static int menu_command_cards_add(ArgValueCopy *args);
 
-// TODO: return `FILE*` instead of `char*`
-static Errno make_repo_path_str(const StrView name, char **result);
+static Errno repo_path_str(StrView repo_name, char **result);
+static Errno create_repo(StrView repo_name);
+static Errno delete_repo(StrView repo_name);
+static Errno open_repo(StrView repo_name, const char *mode, FILE **result);
 
 const CommandSet menu_command_set = {
     .len = 3,
@@ -140,102 +142,119 @@ static int menu_command_repo_list(ArgValueCopy *args)
 // TODO: create the `resources/repositories` folder if it doesn't exist
 static int menu_command_repo_new(ArgValueCopy *args)
 {
-    char *new_repo_path;
-    Errno err = make_repo_path_str(args[0].value.data.as_str, &new_repo_path);
-    if (err != 0) {
-        fprintf(stderr, "ERROR: could not create new repo: %s\n", strerror(err));
-        return err;
-    }
+    Errno err = create_repo(args[0].value.data.as_str);
+    if (err != 0)
+        fprintf(stderr, "ERROR: could not create a new repo: %s\n",
+                strerror(err));
 
-    FILE *new_repo = fopen(new_repo_path, "w");
-    if (!new_repo) {
-        perror("ERROR: could not create new repo");
-        free(new_repo_path);
-        return 1;
-    }
-
-    fclose(new_repo);
-    return 0;
+    return err;
 }
 
 static int menu_command_repo_del(ArgValueCopy *args)
 {
-    char *repo_path;
-    int err = make_repo_path_str(args[0].value.data.as_str, &repo_path);
-    if (err != 0) return err;
+    Errno err = delete_repo(args[0].value.data.as_str);
+    if (err != 0)
+        fprintf(stderr, "ERROR: could not delete the repo: %s\n",
+                strerror(err));
 
-    if (remove(repo_path) == -1) {
-        perror("ERROR: could not delete the repo");
-        free(repo_path);
-        return 1;
-    }
-
-    free(repo_path);
-    return 0;
-}
-
-static Errno make_repo_path_str(const StrView name, char **result)
-{
-    char *new_repo_path = (char *) malloc(sizeof(REPOSITORIES_PATH) + name.len);
-    if (!new_repo_path) return errno;
-
-    memcpy(new_repo_path, REPOSITORIES_PATH, sizeof(REPOSITORIES_PATH));
-    new_repo_path[sizeof(REPOSITORIES_PATH)-1] = '/';
-    strncat(new_repo_path, name.items, name.len);
-
-    *result = new_repo_path;
-    return 0;
+    return err;
 }
 
 static int menu_command_cards_list(ArgValueCopy *args)
 {
-    char *repo_path;
-    Errno err = make_repo_path_str(args[0].value.data.as_str, &repo_path);
+    FILE *repo;
+    Errno err = open_repo(args[0].value.data.as_str, "r", &repo);
     if (err != 0) {
-        fprintf(stderr, "ERROR: could not list cards from the repo: %s\n",
+        fprintf(stderr, "ERROR: could not list cards: %s\n",
                 strerror(err));
-        free(repo_path);
         return err;
-    }
-
-    FILE *repo = fopen(repo_path, "r");
-    if (!repo) {
-        perror("ERROR: could not list cards from the repo");
-        free(repo_path);
-        return errno;
     }
 
     char card_buf[100];
     while (fgets(card_buf, 100, repo) != NULL)
         puts(card_buf);
 
-    free(repo_path);
+    fclose(repo);
     return 0;
 }
 
 static int menu_command_cards_add(ArgValueCopy *args)
 {
-    char *repo_path;
-    Errno err = make_repo_path_str(args[0].value.data.as_str, &repo_path);
+    FILE *repo;
+    Errno err = open_repo(args[0].value.data.as_str, "w", &repo);
     if (err != 0) {
-        fprintf(stderr, "ERROR: could not add card: %s\n",
+        fprintf(stderr, "ERROR: could not add a new card: %s\n",
                 strerror(err));
-        free(repo_path);
         return err;
-    }
-
-    FILE *repo = fopen(repo_path, "a");
-    if (!repo) {
-        perror("ERROR: could not add card");
-        free(repo_path);
-        return errno;
     }
 
     fprintf(repo, STRV_FMT"="STRV_FMT"\n",
             STRV_ARG(args[1].value.data.as_str),
             STRV_ARG(args[2].value.data.as_str));
 
-    free(repo_path);
     fclose(repo);
+    return 0;
+}
+
+
+
+static Errno repo_path_str(StrView repo_name, char **result)
+{
+    char *repo_path = (char *) malloc(sizeof(REPOSITORIES_PATH) + repo_name.len);
+    if (!repo_path) return errno;
+
+    memcpy(repo_path, REPOSITORIES_PATH, sizeof(REPOSITORIES_PATH));
+    repo_path[sizeof(REPOSITORIES_PATH)-1] = '/';
+    strncat(repo_path, repo_name.items, repo_name.len);
+
+    printf("INFO: %s\n", repo_path);
+    
+    *result = repo_path;
+    return 0;
+}
+
+static Errno create_repo(StrView repo_name)
+{
+    char *new_repo_path;
+    Errno err = repo_path_str(repo_name, &new_repo_path);
+    if (err != 0) return err;
+
+    FILE *new_repo = fopen(new_repo_path, "w");
+    if (!new_repo) {
+        free(new_repo_path);
+        return errno;
+    }
+
+    free(new_repo_path);
+    fclose(new_repo);
+    return 0;
+}
+
+static Errno delete_repo(StrView repo_name)
+{
+    char *repo_path;
+    Errno err = repo_path_str(repo_name, &repo_path);
+    if (err != 0) return err;
+
+    if (remove(repo_path) != 0) return errno;
+
+    return 0;
+}
+
+static Errno open_repo(StrView repo_name, const char *mode, FILE **result)
+{
+    char *repo_path;
+    Errno err = repo_path_str(repo_name, &repo_path);
+    if (err != 0) return err;
+
+    FILE *repo = fopen(repo_path, mode);
+    if (!repo) {
+        free(repo_path);
+        return errno;
+    }
+
+    *result = repo;
+
+    free(repo_path);
     return 0;
 }
