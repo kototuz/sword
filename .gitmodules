@@ -1,0 +1,3 @@
+[submodule "kovsh"]
+	path = kovsh
+	url = https://github.com/zone-11/kovsh
