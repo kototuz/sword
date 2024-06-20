@@ -27,4 +27,8 @@ typedef int Errno;
 extern const CommandSet menu_command_set;
 extern const CommandSet exam_command_set;
 
+Errno repo_new(StrView name);
+Errno repo_del(StrView name);
+Errno repo_open(StrView name, const char *mode, FILE **result);
+
 #endif

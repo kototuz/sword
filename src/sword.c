@@ -14,9 +14,6 @@ static int menu_command_cards_list(ArgValueCopy *args);
 static int menu_command_cards_add(ArgValueCopy *args);
 
 static Errno repo_path_str(StrView repo_name, char **result);
-static Errno create_repo(StrView repo_name);
-static Errno delete_repo(StrView repo_name);
-static Errno open_repo(StrView repo_name, const char *mode, FILE **result);
 
 const CommandSet menu_command_set = {
     .len = 3,
@@ -101,6 +98,54 @@ const CommandSet menu_command_set = {
 
 
 
+Errno repo_new(StrView repo_name)
+{
+    char *new_repo_path;
+    Errno err = repo_path_str(repo_name, &new_repo_path);
+    if (err != 0) return err;
+
+    FILE *new_repo = fopen(new_repo_path, "w");
+    if (!new_repo) {
+        free(new_repo_path);
+        return errno;
+    }
+
+    free(new_repo_path);
+    fclose(new_repo);
+    return 0;
+}
+
+Errno repo_del(StrView repo_name)
+{
+    char *repo_path;
+    Errno err = repo_path_str(repo_name, &repo_path);
+    if (err != 0) return err;
+
+    if (remove(repo_path) != 0) return errno;
+
+    return 0;
+}
+
+Errno repo_open(StrView repo_name, const char *mode, FILE **result)
+{
+    char *repo_path;
+    Errno err = repo_path_str(repo_name, &repo_path);
+    if (err != 0) return err;
+
+    FILE *repo = fopen(repo_path, mode);
+    if (!repo) {
+        free(repo_path);
+        return errno;
+    }
+
+    *result = repo;
+
+    free(repo_path);
+    return 0;
+}
+
+
+
 static int menu_command_help(ArgValueCopy *args)
 {
     (void) args;
@@ -142,7 +187,7 @@ static int menu_command_repo_list(ArgValueCopy *args)
 // TODO: create the `resources/repositories` folder if it doesn't exist
 static int menu_command_repo_new(ArgValueCopy *args)
 {
-    Errno err = create_repo(args[0].value.data.as_str);
+    Errno err = repo_new(args[0].value.data.as_str);
     if (err != 0)
         fprintf(stderr, "ERROR: could not create a new repo: %s\n",
                 strerror(err));
@@ -152,7 +197,7 @@ static int menu_command_repo_new(ArgValueCopy *args)
 
 static int menu_command_repo_del(ArgValueCopy *args)
 {
-    Errno err = delete_repo(args[0].value.data.as_str);
+    Errno err = repo_del(args[0].value.data.as_str);
     if (err != 0)
         fprintf(stderr, "ERROR: could not delete the repo: %s\n",
                 strerror(err));
@@ -163,7 +208,7 @@ static int menu_command_repo_del(ArgValueCopy *args)
 static int menu_command_cards_list(ArgValueCopy *args)
 {
     FILE *repo;
-    Errno err = open_repo(args[0].value.data.as_str, "r", &repo);
+    Errno err = repo_open(args[0].value.data.as_str, "r", &repo);
     if (err != 0) {
         fprintf(stderr, "ERROR: could not list cards: %s\n",
                 strerror(err));
@@ -181,7 +226,7 @@ static int menu_command_cards_list(ArgValueCopy *args)
 static int menu_command_cards_add(ArgValueCopy *args)
 {
     FILE *repo;
-    Errno err = open_repo(args[0].value.data.as_str, "w", &repo);
+    Errno err = repo_open(args[0].value.data.as_str, "w", &repo);
     if (err != 0) {
         fprintf(stderr, "ERROR: could not add a new card: %s\n",
                 strerror(err));
@@ -213,48 +258,3 @@ static Errno repo_path_str(StrView repo_name, char **result)
     return 0;
 }
 
-static Errno create_repo(StrView repo_name)
-{
-    char *new_repo_path;
-    Errno err = repo_path_str(repo_name, &new_repo_path);
-    if (err != 0) return err;
-
-    FILE *new_repo = fopen(new_repo_path, "w");
-    if (!new_repo) {
-        free(new_repo_path);
-        return errno;
-    }
-
-    free(new_repo_path);
-    fclose(new_repo);
-    return 0;
-}
-
-static Errno delete_repo(StrView repo_name)
-{
-    char *repo_path;
-    Errno err = repo_path_str(repo_name, &repo_path);
-    if (err != 0) return err;
-
-    if (remove(repo_path) != 0) return errno;
-
-    return 0;
-}
-
-static Errno open_repo(StrView repo_name, const char *mode, FILE **result)
-{
-    char *repo_path;
-    Errno err = repo_path_str(repo_name, &repo_path);
-    if (err != 0) return err;
-
-    FILE *repo = fopen(repo_path, mode);
-    if (!repo) {
-        free(repo_path);
-        return errno;
-    }
-
-    *result = repo;
-
-    free(repo_path);
-    return 0;
-}
