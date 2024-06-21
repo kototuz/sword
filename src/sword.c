@@ -320,6 +320,9 @@ static int menu_command_cards_add(ArgValueCopy *args)
         memcpy(tran_buf, args[2].value.data.as_str.items, args[2].value.data.as_str.len);
 
         repo_ser_fc((FlashCard){text_buf, tran_buf});
+
+        free(text_buf);
+        free(tran_buf);
     repo_close();
 
     return 0;
@@ -336,8 +339,6 @@ static Errno repo_path_str(StrView repo_name, char **result)
     repo_path[sizeof(REPOSITORIES_PATH)-1] = '/';
     strncat(repo_path, repo_name.items, repo_name.len);
 
-    printf("INFO: %s\n", repo_path);
-    
     *result = repo_path;
     return 0;
 }
