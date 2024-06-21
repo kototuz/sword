@@ -13,8 +13,8 @@ typedef enum {
 } KnowledgeLevel;
 
 typedef struct {
-    const char *text;
-    const char *translation;
+    char *text;
+    char *translation;
 } FlashCard;
 
 typedef struct {
@@ -27,8 +27,17 @@ typedef int Errno;
 extern const CommandSet menu_command_set;
 extern const CommandSet exam_command_set;
 
+typedef struct {
+    unsigned read   : 1;
+    unsigned append : 1;
+} RepoOpenMode;
+
 Errno repo_new(StrView name);
 Errno repo_del(StrView name);
-Errno repo_open(StrView name, const char *mode, FILE **result);
+Errno repo_open(StrView name, RepoOpenMode mode);
+void  repo_close();
+
+void repo_ser_fc(FlashCard);
+bool repo_deser_fc(FlashCard *);
 
 #endif

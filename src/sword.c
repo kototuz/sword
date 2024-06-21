@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 
 static int menu_command_help(ArgValueCopy *args);
 static int menu_command_repo_list(ArgValueCopy *args);
@@ -96,6 +97,11 @@ const CommandSet menu_command_set = {
     }
 };
 
+static struct {
+    RepoOpenMode open_mode;
+    FILE *file;
+} current_repo = {0};
+
 
 
 Errno repo_new(StrView repo_name)
@@ -126,22 +132,90 @@ Errno repo_del(StrView repo_name)
     return 0;
 }
 
-Errno repo_open(StrView repo_name, const char *mode, FILE **result)
+static const char *mode_map[] = {[1] = "r", "a", "a+"};
+Errno repo_open(StrView repo_name, RepoOpenMode mode)
 {
+    assert(!current_repo.file);
+
+    union {
+        RepoOpenMode mode;
+        int idx;
+    } value = {.mode = mode};
+
+    assert(value.idx);
+
     char *repo_path;
     Errno err = repo_path_str(repo_name, &repo_path);
     if (err != 0) return err;
 
-    FILE *repo = fopen(repo_path, mode);
-    if (!repo) {
+    FILE *repo_file = fopen(repo_path, mode_map[value.idx]);
+    if (!repo_file) {
         free(repo_path);
         return errno;
     }
 
-    *result = repo;
+    current_repo.open_mode = mode;
+    current_repo.file = repo_file;
 
     free(repo_path);
     return 0;
+}
+
+void repo_close()
+{
+    assert(current_repo.file);
+    fclose(current_repo.file);
+}
+
+void repo_ser_fc(FlashCard fc)
+{
+    assert(current_repo.file);
+    assert(current_repo.open_mode.append);
+
+    fprintf(current_repo.file,
+            "%s=%s\n",
+            fc.text,
+            fc.translation);
+}
+
+bool repo_deser_fc(FlashCard *result)
+{
+    assert(current_repo.file);
+    assert(current_repo.open_mode.read);
+
+    int symbol;
+    size_t fc_text_len = 0;
+    size_t fc_transcript_len = 0;
+
+    symbol = fgetc(current_repo.file);
+    if (symbol == EOF) return false;
+    else if (symbol != '=') fc_text_len++;
+
+    while (fgetc(current_repo.file) != '=') fc_text_len++;
+    while (fgetc(current_repo.file) != '\n') fc_transcript_len++;
+
+    fseek(current_repo.file, -(fc_text_len + fc_transcript_len)-2, SEEK_CUR);
+
+    result->text = (char *) malloc(fc_text_len+1);
+    if (!result->text) return false;
+    result->translation = (char *) malloc(fc_transcript_len+1);
+    if (!result->translation) {
+        free(result->text);
+        return false;
+    }
+
+    result->text[fc_text_len] = '\0';
+    result->translation[fc_transcript_len] = '\0';
+
+    fc_text_len = 0;
+    fc_transcript_len = 0;
+
+    while ((symbol = fgetc(current_repo.file)) != '=')
+        result->text[fc_text_len++] = symbol;
+    while ((symbol = fgetc(current_repo.file)) != '\n')
+        result->translation[fc_transcript_len++] = symbol;
+
+    return true;
 }
 
 
@@ -207,37 +281,47 @@ static int menu_command_repo_del(ArgValueCopy *args)
 
 static int menu_command_cards_list(ArgValueCopy *args)
 {
-    FILE *repo;
-    Errno err = repo_open(args[0].value.data.as_str, "r", &repo);
-    if (err != 0) {
-        fprintf(stderr, "ERROR: could not list cards: %s\n",
-                strerror(err));
-        return err;
-    }
+    Errno err = repo_open(args[0].value.data.as_str, (RepoOpenMode){.read = 1});
+        if (err != 0) {
+            fprintf(stderr, "ERROR: could not list cards: %s\n",
+                    strerror(err));
+            return err;
+        }
 
-    char card_buf[100];
-    while (fgets(card_buf, 100, repo) != NULL)
-        puts(card_buf);
+        FlashCard fc;
+        while (repo_deser_fc(&fc))
+            printf("%s=%s\n", fc.text, fc.translation);
+    repo_close();
 
-    fclose(repo);
     return 0;
 }
 
 static int menu_command_cards_add(ArgValueCopy *args)
 {
-    FILE *repo;
-    Errno err = repo_open(args[0].value.data.as_str, "w", &repo);
-    if (err != 0) {
-        fprintf(stderr, "ERROR: could not add a new card: %s\n",
-                strerror(err));
-        return err;
-    }
+    Errno err = repo_open(args[0].value.data.as_str, (RepoOpenMode){.append = 1});
+        if (err != 0) {
+            fprintf(stderr, "ERROR: could not add a new card: %s\n",
+                    strerror(err));
+            return err;
+        }
 
-    fprintf(repo, STRV_FMT"="STRV_FMT"\n",
-            STRV_ARG(args[1].value.data.as_str),
-            STRV_ARG(args[2].value.data.as_str));
+        char *text_buf = (char *) malloc(args[1].value.data.as_str.len);
+        if (!text_buf) {
+            perror("ERROR: could not add a new card");
+            return errno;
+        }
+        char *tran_buf = (char *) malloc(args[2].value.data.as_str.len);
+        if (!tran_buf) {
+            perror("ERROR: could not add a new card");
+            return errno;
+        }
 
-    fclose(repo);
+        memcpy(text_buf, args[1].value.data.as_str.items, args[1].value.data.as_str.len);
+        memcpy(tran_buf, args[2].value.data.as_str.items, args[2].value.data.as_str.len);
+
+        repo_ser_fc((FlashCard){text_buf, tran_buf});
+    repo_close();
+
     return 0;
 }
 
