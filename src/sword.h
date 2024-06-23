@@ -32,6 +32,9 @@ typedef struct {
     unsigned append : 1;
 } RepoOpenMode;
 
+// UTILS
+Errno strc_from_strv(StrView strv, char **result);
+
 Errno repo_new(StrView name);
 Errno repo_del(StrView name);
 Errno repo_open(StrView name, RepoOpenMode mode);
@@ -39,5 +42,6 @@ void  repo_close();
 
 void repo_ser_fc(FlashCard);
 bool repo_deser_fc(FlashCard *);
+
 
 #endif

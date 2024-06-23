@@ -305,24 +305,25 @@ static int menu_command_cards_add(ArgValueCopy *args)
             return err;
         }
 
-        char *text_buf = (char *) malloc(args[1].value.data.as_str.len);
-        if (!text_buf) {
-            perror("ERROR: could not add a new card");
-            return errno;
+        char *text_strc;
+        char *transcript_strc;
+        err = strc_from_strv(args[1].value.data.as_str, &text_strc);
+        if (err != 0) {
+            fprintf(stderr, "ERROR: could not add a new card: %s\n",
+                    strerror(err));
+            return err;
         }
-        char *tran_buf = (char *) malloc(args[2].value.data.as_str.len);
-        if (!tran_buf) {
-            perror("ERROR: could not add a new card");
-            return errno;
+        err = strc_from_strv(args[2].value.data.as_str, &transcript_strc);
+        if (err != 0) {
+            fprintf(stderr, "ERROR: could not add a new card: %s\n",
+                    strerror(err));
+            return err;
         }
 
-        memcpy(text_buf, args[1].value.data.as_str.items, args[1].value.data.as_str.len);
-        memcpy(tran_buf, args[2].value.data.as_str.items, args[2].value.data.as_str.len);
+        repo_ser_fc((FlashCard){text_strc, transcript_strc});
 
-        repo_ser_fc((FlashCard){text_buf, tran_buf});
-
-        free(text_buf);
-        free(tran_buf);
+        free(text_strc);
+        free(transcript_strc);
     repo_close();
 
     return 0;
