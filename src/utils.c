@@ -1,5 +1,7 @@
 #include "sword.h"
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 
 Errno strc_from_strv(StrView strv, char **result)
 {

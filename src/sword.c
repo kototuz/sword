@@ -13,11 +13,15 @@ static int menu_command_repo_new(ArgValueCopy *args);
 static int menu_command_repo_del(ArgValueCopy *args);
 static int menu_command_cards_list(ArgValueCopy *args);
 static int menu_command_cards_add(ArgValueCopy *args);
+static int menu_command_exam_start(ArgValueCopy *args);
+
+static int exam_command_ans(ArgValueCopy *args);
+static int exam_command_finish(ArgValueCopy *args);
 
 static Errno repo_path_str(StrView repo_name, char **result);
 
 const CommandSet menu_command_set = {
-    .len = 3,
+    .len = 4,
     .items = (Command[]){
         {
             .name = STRV_LIT("help"),
@@ -93,6 +97,50 @@ const CommandSet menu_command_set = {
                     }
                 }
             }
+        },
+        {
+            .name = STRV_LIT("exam"),
+            .desc = "Starts an exam",
+            .fn = menu_command_exam_start,
+            .args_len = 1,
+            .args = (Arg[]){
+                {
+                    .name = STRV_LIT("repo"),
+                    .usage = "The repo to exam",
+                    .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
+                }
+            }
+        }
+    }
+};
+
+static const CommandSet exam_command_set = {
+    .len = 2,
+    .items = (Command[]){
+        {
+            .name = STRV_LIT("ans"),
+            .desc = "Answers",
+            .fn = exam_command_ans,
+            .args_len = 1,
+            .args = (Arg[]){
+                {
+                    .name = STRV_LIT("ans"),
+                    .type_inst.type_tag = KSH_VALUE_TYPE_TAG_ENUM,
+                    .type_inst.context = &(KshEnumContext){
+                        .cases_len = 3,
+                        .cases = (StrView[]){
+                            STRV_LIT("bad"),
+                            STRV_LIT("norm"),
+                            STRV_LIT("ok"),
+                        }
+                    }
+                }
+            }
+        },
+        {
+            .name = STRV_LIT("finish"),
+            .desc = "Finish an exam",
+            .fn = exam_command_finish,
         }
     }
 };
@@ -329,6 +377,47 @@ static int menu_command_cards_add(ArgValueCopy *args)
     return 0;
 }
 
+static bool should_finish_exam = false;
+static int menu_command_exam_start(ArgValueCopy *args)
+{
+    Errno err = repo_open(args[0].value.data.as_str, (RepoOpenMode){.read = 1});
+        if (err != 0) {
+            fprintf(stderr, "ERROR: could not start the exam: %s\n", strerror(err));
+            return err;
+        }
+
+        ksh_use_command_set(exam_command_set);
+
+        FlashCard fc;
+        while (repo_deser_fc(&fc)) {
+            if (should_finish_exam) return 0;
+
+            puts(fc.text);
+            printf(">>> ");
+
+            char buf[100];
+            if (!fgets(buf, sizeof(buf), stdin)) return ferror(stdin);
+
+            CommandCall cmd_call;
+            StrView cmd = strv_from_str(buf);
+            KshErr err = ksh_parse(cmd, &cmd_call);
+            if (err != KSH_ERR_OK) {
+                fprintf(stderr, "ERROR: exam: %s\n", ksh_err_str(err));
+                return err;
+            }
+            err = ksh_cmd_call_execute(cmd_call);
+            if (err != KSH_ERR_OK) {
+                fprintf(stderr, "ERROR: exam: %s\n", ksh_err_str(err));
+                return err;
+            }
+
+            puts(fc.translation);
+        }
+    repo_close();
+
+    return 0;
+}
+
 
 
 static Errno repo_path_str(StrView repo_name, char **result)
@@ -344,3 +433,30 @@ static Errno repo_path_str(StrView repo_name, char **result)
     return 0;
 }
 
+static int exam_command_ans(ArgValueCopy *args)
+{
+    int enum_ans = args[0].value.data.as_int;
+    switch (enum_ans) {
+    case 0: // bad
+        puts("bad");
+        break;
+    case 1: // norm
+        puts("norm");
+        break;
+    case 2: // ok
+        puts("ok");
+        break;
+    default: assert(0 && "other answers are not yet implemented");
+    }
+
+    return 0;
+}
+
+static int exam_command_finish(ArgValueCopy *args)
+{
+    (void) args;
+
+    should_finish_exam = true;
+
+    return 0;
+}

@@ -25,7 +25,6 @@ typedef struct {
 typedef int Errno;
 
 extern const CommandSet menu_command_set;
-extern const CommandSet exam_command_set;
 
 typedef struct {
     unsigned read   : 1;

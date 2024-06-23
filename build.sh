@@ -2,7 +2,7 @@
 
 CC="gcc"
 CFLAGS="-Wall -Wextra -Wpedantic -g"
-SRC="src/main.c src/sword.c"
+SRC="src/main.c src/sword.c src/utils.c"
 LIB_SRC=kovsh/src/*.c
 LIB_INCLUDE=kovsh/src
 
