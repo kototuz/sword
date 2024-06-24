@@ -11,6 +11,7 @@ static int menu_command_help(ArgValueCopy *args);
 static int menu_command_repo_list(ArgValueCopy *args);
 static int menu_command_repo_new(ArgValueCopy *args);
 static int menu_command_repo_del(ArgValueCopy *args);
+static int menu_command_repo_add(ArgValueCopy *args);
 static int menu_command_cards_list(ArgValueCopy *args);
 static int menu_command_cards_add(ArgValueCopy *args);
 static int menu_command_exam_start(ArgValueCopy *args);
@@ -19,9 +20,10 @@ static int exam_command_ans(ArgValueCopy *args);
 static int exam_command_finish(ArgValueCopy *args);
 
 static Errno repo_path_str(StrView repo_name, char **result);
+static Errno fc_from_strv(StrView strv, FlashCard *res);
 
 const CommandSet menu_command_set = {
-    .len = 4,
+    .len = 5,
     .items = (Command[]){
         {
             .name = STRV_LIT("help"),
@@ -32,7 +34,7 @@ const CommandSet menu_command_set = {
             .name = STRV_LIT("repo"),
             .desc = "Lists all repositories",
             .fn = menu_command_repo_list,
-            .subcommands.len = 2,
+            .subcommands.len = 3,
             .subcommands.items = (Command[]){
                 {
                     .name = STRV_LIT("new"),
@@ -56,6 +58,19 @@ const CommandSet menu_command_set = {
                         {
                             .name = STRV_LIT("name"),
                             .usage = "Repo name",
+                            .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
+                        }
+                    }
+                },
+                {
+                    .name = STRV_LIT("insert"),
+                    .desc = "Adds a new card to a repo",
+                    .fn = menu_command_repo_add,
+                    .args_len = 1,
+                    .args = (Arg[]){
+                        {
+                            .name = STRV_LIT("repo"),
+                            .usage = "Repo",
                             .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
                         }
                     }
@@ -110,7 +125,7 @@ const CommandSet menu_command_set = {
                     .type_inst.type_tag = KSH_VALUE_TYPE_TAG_STR
                 }
             }
-        }
+        },
     }
 };
 
@@ -220,10 +235,9 @@ void repo_ser_fc(FlashCard fc)
     assert(current_repo.file);
     assert(current_repo.open_mode.append);
 
-    fprintf(current_repo.file,
-            "%s=%s\n",
-            fc.text,
-            fc.translation);
+    fputs(fc.text, current_repo.file);
+    fputs("=", current_repo.file);
+    fputs(fc.translation, current_repo.file);
 }
 
 bool repo_deser_fc(FlashCard *result)
@@ -325,6 +339,35 @@ static int menu_command_repo_del(ArgValueCopy *args)
                 strerror(err));
 
     return err;
+}
+
+static int menu_command_repo_add(ArgValueCopy *args)
+{
+    Errno err = repo_open(args[0].value.data.as_str, (RepoOpenMode){.append = 1});
+        if (err != 0) {
+            fprintf(stderr, "ERROR: could not begin the add mode: %s\n",
+                    strerror(err));
+            return err;
+        }
+
+        char buf[100];
+        while (fgets(buf, sizeof(buf), stdin)) {
+            if (buf[0] == 'q' && buf[1] == '\n') {
+                repo_close();
+                return 0;
+            }
+
+            FlashCard new_fc;
+            err = fc_from_strv(strv_from_str(buf), &new_fc);
+
+            repo_ser_fc(new_fc);
+
+            free(new_fc.text);
+            free(new_fc.translation);
+        }
+    repo_close();
+
+    return 0;
 }
 
 static int menu_command_cards_list(ArgValueCopy *args)
@@ -458,5 +501,24 @@ static int exam_command_finish(ArgValueCopy *args)
 
     should_finish_exam = true;
 
+    return 0;
+}
+
+static Errno fc_from_strv(StrView strv, FlashCard *res)
+{
+    size_t text_len = 0;
+    size_t transcript_len = 0;
+    size_t cur = 0;
+
+    while (strv.items[cur++] != '=') text_len++;
+    transcript_len = strv.len - cur;
+
+    char *text_buf = (char *) malloc(text_len);
+    char *transcript_buf = (char *) malloc(transcript_len);
+
+    memcpy(text_buf, strv.items, text_len);
+    memcpy(transcript_buf, &strv.items[cur], transcript_len);
+
+    *res = (FlashCard){text_buf, transcript_buf};
     return 0;
 }
