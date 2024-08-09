@@ -5,7 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define REPOS_DIR "./repos/"
+#define REPOS_DIR "./repos.d/"
+
+
+
+typedef FILE *Repo;
 
 
 
@@ -19,22 +23,22 @@ static char *get_repo_path(StrView name)
     return result;
 }
 
-static FILE *open_repo(StrView repo_name, const char *mode)
+static Repo open_repo(StrView repo_name, const char *mode)
 {
     char *path = get_repo_path(repo_name);
     if (!path) return NULL;
-    FILE *repo_file = fopen(path, mode);
-    if (!repo_file) return NULL;
+    Repo repo = fopen(path, mode);
+    if (!repo) return NULL;
     free(path);
-    return repo_file;
+    return repo;
 }
 
 static void deleteline(StrView repo_name, size_t ln)
 {
-    FILE *f = open_repo(repo_name, "r");
+    Repo f = open_repo(repo_name, "r");
     if (!f) { return; }
 
-    FILE *copy = fopen("copy", "w");
+    Repo copy = fopen("copy", "w");
     if (!copy) { return; }
 
     int s;
@@ -58,7 +62,7 @@ static void deleteline(StrView repo_name, size_t ln)
 
 static bool get_card_line_number(StrView repo_name, StrView label, size_t *result)
 {
-    FILE *repo = open_repo(repo_name, "r");
+    Repo repo = open_repo(repo_name, "r");
     if (!repo) return false;
 
     size_t bufsize = label.len+2;
@@ -110,7 +114,7 @@ int new_card(KshParser *parser)
         )
     }); 
 
-    FILE *repo = open_repo(r, "r");
+    Repo repo = open_repo(r, "r");
     if (!repo) {
         fprintf(stderr, "ERROR: could not open repo "STRV_FMT"\n", STRV_ARG(r));
         exit(1);
@@ -133,7 +137,7 @@ int new_repo(KshParser *parser)
         .params = KSH_PARAMS(KSH_PARAM(n, "new repo name"))
     });
 
-    FILE *new_repo = open_repo(n, "w");
+    Repo new_repo = open_repo(n, "w");
     if (!new_repo) {
         fprintf(stderr, "ERROR: could not create new repo "STRV_FMT"\n", STRV_ARG(n));
         exit(1);
