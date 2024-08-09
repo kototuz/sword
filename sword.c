@@ -9,6 +9,7 @@
 
 
 
+// TODO: open_repo instead
 static char *get_repo_path(StrView name)
 {
     char *result = (char *) malloc(name.len + sizeof(REPOS_DIR));
@@ -16,6 +17,66 @@ static char *get_repo_path(StrView name)
     strcpy(result, REPOS_DIR);
     memcpy(&result[sizeof(REPOS_DIR)-1], name.items, name.len);
     return result;
+}
+
+static void deleteline(const char *filename, size_t ln)
+{
+    FILE *f = fopen(filename, "r");
+    if (!f) { return; }
+
+    FILE *copy = fopen("copy", "w");
+    if (!copy) { return; }
+
+    int s;
+    size_t i = 0;
+    while ((s = fgetc(f)) != EOF) {
+        if (s == '\n') i++;
+        if (i == ln) continue;
+    }
+
+    fclose(f);
+    fclose(copy);
+
+    remove(filename);
+    rename("copy", filename);
+}
+
+static bool get_card_line_number(const char *repo_path, StrView label, size_t *result)
+{
+    FILE *repo = fopen(repo_path, "r");
+    if (!repo) return false;
+
+    size_t bufsize = label.len+2;
+    char *buf = (char *) malloc(bufsize);
+    if (!buf) {
+        fclose(repo);
+        return false;
+    }
+
+
+    int s = '\n';
+    size_t ln = 0;
+    do {
+        if (s == '\n') {
+            ln++;
+            if (!fgets(buf, bufsize, repo)) {
+                fclose(repo);
+                free(buf);
+                return false;
+            }
+
+            if (strv_eq(label, strv_new(buf, bufsize-2))) {
+                *result = ln-1;
+                fclose(repo);
+                free(buf);
+                return true;
+            }
+        }
+    } while ((s = fgetc(repo)) != EOF);
+
+    free(buf);
+    fclose(repo);
+    return false;
 }
 
 
@@ -83,6 +144,60 @@ int new_repo(KshParser *parser)
     return 0;
 }
 
+int del_card(KshParser *parser)
+{
+    StrView r; // repo
+    StrView l; // label
+
+    ksh_parse_args(parser, &(KshArgs){
+        .params = KSH_PARAMS(
+            KSH_PARAM(r, "repo"),
+            KSH_PARAM(l, "flashcard label")
+        )
+    });
+
+    char *repo_path = get_repo_path(r);
+    if (!repo_path) {
+        fputs("ERROR: could not allocate memory\n", stderr);
+        exit(1);
+    }
+
+    size_t ln;
+    if (!get_card_line_number(repo_path, l, &ln)) {
+        fprintf(stderr, "ERROR: could not find label "STRV_FMT" in repo %s\n",
+                STRV_ARG(l), repo_path);
+        exit(1);
+    }
+
+    deleteline(repo_path, ln);
+
+    return 0;
+}
+
+int del_repo(KshParser *parser)
+{
+    StrView n; // name
+
+    ksh_parse_args(parser, &(KshArgs){
+        .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
+    });
+
+    char *repo_path = get_repo_path(n);
+    if (!repo_path) {
+        fputs("ERROR: could not allocate memory\n", stderr);
+        exit(1);
+    }
+
+    if (remove(repo_path) < 0) {
+        fprintf(stderr, "ERROR: could not delete repo %s\n", repo_path);
+        free(repo_path);
+        exit(1);
+    }
+
+    free(repo_path);
+    return 0;
+}
+
 int new(KshParser *parser)
 {
     ksh_parse_args(parser, &(KshArgs){
@@ -95,11 +210,24 @@ int new(KshParser *parser)
     return 0;
 }
 
+int del(KshParser *parser)
+{
+    ksh_parse_args(parser, &(KshArgs){
+        .subcmds = KSH_SUBCMDS(
+            KSH_SUBCMD(del_repo, "repo", "delete repo"),
+            KSH_SUBCMD(del_card, "card", "delete card")
+        )
+    });
+
+    return 0;
+}
+
 int root(KshParser *parser)
 {
     ksh_parse_args(parser, &(KshArgs){
         .subcmds = KSH_SUBCMDS(
-            KSH_SUBCMD(new, "new", "create new (card, repo)")
+            KSH_SUBCMD(new, "new", "create new (card, repo)"),
+            KSH_SUBCMD(del, "del", "delete")
         )
     });
 
@@ -112,3 +240,8 @@ int main(int argc, char **argv)
     ksh_init_from_cargs(&parser, argc, argv);
     ksh_parse(&parser, root);
 }
+
+
+
+// TODO: better error message
+// TODO: exit(1) -> return 1
