@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #define REPOS_DIR "./repos.d/"
 
@@ -33,13 +34,13 @@ static Repo open_repo(StrView repo_name, const char *mode)
     return repo;
 }
 
-static void deleteline(StrView repo_name, size_t ln)
+static Errno deleteline(StrView repo_name, size_t ln)
 {
     Repo f = open_repo(repo_name, "r");
-    if (!f) { return; }
+    if (!f) { return errno; }
 
     Repo copy = fopen("copy", "w");
-    if (!copy) { return; }
+    if (!copy) { return errno; }
 
     int s;
     size_t i = 0;
@@ -52,12 +53,13 @@ static void deleteline(StrView repo_name, size_t ln)
     fclose(copy);
 
     char *path = get_repo_path(repo_name);
-    if (!path) return;
+    if (!path) return errno;
 
     remove(path);
     rename("copy", path);
 
     free(path);
+    return 0;
 }
 
 static bool get_card_line_number(StrView repo_name, StrView label, size_t *result)
@@ -71,7 +73,6 @@ static bool get_card_line_number(StrView repo_name, StrView label, size_t *resul
         fclose(repo);
         return false;
     }
-
 
     int s = '\n';
     size_t ln = 0;
@@ -116,19 +117,27 @@ int new_card(KshParser *parser)
 
     Repo repo = open_repo(r, "r");
     if (!repo) {
-        fprintf(stderr, "ERROR: could not open repo "STRV_FMT"\n", STRV_ARG(r));
+        fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
+                STRV_ARG(r),
+                strerror(errno));
         exit(1);
     }
     fclose(repo);
 
     repo = open_repo(r, "a");
+    if (!repo) {
+        fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
+                STRV_ARG(r),
+                strerror(errno));
+        exit(1);
+    }
+
     fprintf(repo, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
 
     fclose(repo);
     return 0;
 }
 
-// TODO: check if the repo already exists
 int new_repo(KshParser *parser)
 {
     StrView n; // name
@@ -139,7 +148,9 @@ int new_repo(KshParser *parser)
 
     Repo new_repo = open_repo(n, "w");
     if (!new_repo) {
-        fprintf(stderr, "ERROR: could not create new repo "STRV_FMT"\n", STRV_ARG(n));
+        fprintf(stderr, "ERROR: could not create new repo `"STRV_FMT"`: %s\n",
+                STRV_ARG(n),
+                strerror(errno));
         exit(1);
     }
 
@@ -161,12 +172,18 @@ int del_card(KshParser *parser)
 
     size_t ln;
     if (!get_card_line_number(r, l, &ln)) {
-        fprintf(stderr, "ERROR: could not find label "STRV_FMT" in repo "STRV_FMT"\n",
+        fprintf(stderr, "ERROR: could not find label `"STRV_FMT"` in repo `"STRV_FMT"`\n",
                 STRV_ARG(l), STRV_ARG(r));
         exit(1);
     }
 
-    deleteline(r, ln);
+    Errno err = deleteline(r, ln);
+    if (err != 0) {
+        fprintf(stderr, "ERROR: could not delete card `"STRV_FMT"`: %s\n",
+                STRV_ARG(l),
+                strerror(err));
+        exit(1);
+    }
 
     return 0;
 }
@@ -186,7 +203,9 @@ int del_repo(KshParser *parser)
     }
 
     if (remove(repo_path) < 0) {
-        fprintf(stderr, "ERROR: could not delete repo %s\n", repo_path);
+        fprintf(stderr, "ERROR: could not delete repo %s: %s\n",
+                repo_path,
+                strerror(errno));
         free(repo_path);
         exit(1);
     }
@@ -240,5 +259,4 @@ int main(int argc, char **argv)
 
 
 
-// TODO: better error message
 // TODO: exit(1) -> return 1
