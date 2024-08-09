@@ -19,9 +19,19 @@ static char *get_repo_path(StrView name)
     return result;
 }
 
-static void deleteline(const char *filename, size_t ln)
+static FILE *open_repo(StrView repo_name, const char *mode)
 {
-    FILE *f = fopen(filename, "r");
+    char *path = get_repo_path(repo_name);
+    if (!path) return NULL;
+    FILE *repo_file = fopen(path, mode);
+    if (!repo_file) return NULL;
+    free(path);
+    return repo_file;
+}
+
+static void deleteline(StrView repo_name, size_t ln)
+{
+    FILE *f = open_repo(repo_name, "r");
     if (!f) { return; }
 
     FILE *copy = fopen("copy", "w");
@@ -37,13 +47,18 @@ static void deleteline(const char *filename, size_t ln)
     fclose(f);
     fclose(copy);
 
-    remove(filename);
-    rename("copy", filename);
+    char *path = get_repo_path(repo_name);
+    if (!path) return;
+
+    remove(path);
+    rename("copy", path);
+
+    free(path);
 }
 
-static bool get_card_line_number(const char *repo_path, StrView label, size_t *result)
+static bool get_card_line_number(StrView repo_name, StrView label, size_t *result)
 {
-    FILE *repo = fopen(repo_path, "r");
+    FILE *repo = open_repo(repo_name, "r");
     if (!repo) return false;
 
     size_t bufsize = label.len+2;
@@ -95,25 +110,17 @@ int new_card(KshParser *parser)
         )
     }); 
 
-    char *repo_path = get_repo_path(r);
-    if (!repo_path) {
-        fputs("ERROR: could not allocate memory\n", stderr);
+    FILE *repo = open_repo(r, "r");
+    if (!repo) {
+        fprintf(stderr, "ERROR: could not open repo "STRV_FMT"\n", STRV_ARG(r));
         exit(1);
     }
+    fclose(repo);
 
-    FILE *repo_file = fopen(repo_path, "r");
-    if (!repo_file) {
-        fprintf(stderr, "ERROR: could not open repo %s\n", repo_path);
-        free(repo_path);
-        exit(1);
-    }
-    fclose(repo_file);
+    repo = open_repo(r, "a");
+    fprintf(repo, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
 
-    repo_file = fopen(repo_path, "a");
-    fprintf(repo_file, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
-
-    free(repo_path);
-    fclose(repo_file);
+    fclose(repo);
     return 0;
 }
 
@@ -126,20 +133,12 @@ int new_repo(KshParser *parser)
         .params = KSH_PARAMS(KSH_PARAM(n, "new repo name"))
     });
 
-    char *new_repo_path = get_repo_path(n);
-    if (!new_repo_path) {
-        fputs("ERROR: could not allocate memory\n", stderr);
-        exit(1);
-    }
-
-    FILE *new_repo = fopen(new_repo_path, "w");
+    FILE *new_repo = open_repo(n, "w");
     if (!new_repo) {
-        fprintf(stderr, "ERROR: could not create new repo %s\n", new_repo_path);
-        free(new_repo_path);
+        fprintf(stderr, "ERROR: could not create new repo "STRV_FMT"\n", STRV_ARG(n));
         exit(1);
     }
 
-    free(new_repo_path);
     fclose(new_repo);
     return 0;
 }
@@ -156,20 +155,14 @@ int del_card(KshParser *parser)
         )
     });
 
-    char *repo_path = get_repo_path(r);
-    if (!repo_path) {
-        fputs("ERROR: could not allocate memory\n", stderr);
-        exit(1);
-    }
-
     size_t ln;
-    if (!get_card_line_number(repo_path, l, &ln)) {
-        fprintf(stderr, "ERROR: could not find label "STRV_FMT" in repo %s\n",
-                STRV_ARG(l), repo_path);
+    if (!get_card_line_number(r, l, &ln)) {
+        fprintf(stderr, "ERROR: could not find label "STRV_FMT" in repo "STRV_FMT"\n",
+                STRV_ARG(l), STRV_ARG(r));
         exit(1);
     }
 
-    deleteline(repo_path, ln);
+    deleteline(r, ln);
 
     return 0;
 }
