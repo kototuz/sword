@@ -10,11 +10,11 @@
 
 
 
+typedef int Errno;
 typedef FILE *Repo;
 
 
 
-// TODO: open_repo instead
 static char *get_repo_path(StrView name)
 {
     char *result = (char *) malloc(name.len + sizeof(REPOS_DIR));
@@ -120,7 +120,7 @@ int new_card(KshParser *parser)
         fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
                 STRV_ARG(r),
                 strerror(errno));
-        exit(1);
+        return 1;
     }
     fclose(repo);
 
@@ -129,7 +129,7 @@ int new_card(KshParser *parser)
         fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
                 STRV_ARG(r),
                 strerror(errno));
-        exit(1);
+        return 1;
     }
 
     fprintf(repo, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
@@ -151,7 +151,7 @@ int new_repo(KshParser *parser)
         fprintf(stderr, "ERROR: could not create new repo `"STRV_FMT"`: %s\n",
                 STRV_ARG(n),
                 strerror(errno));
-        exit(1);
+        return 1;
     }
 
     fclose(new_repo);
@@ -174,7 +174,7 @@ int del_card(KshParser *parser)
     if (!get_card_line_number(r, l, &ln)) {
         fprintf(stderr, "ERROR: could not find label `"STRV_FMT"` in repo `"STRV_FMT"`\n",
                 STRV_ARG(l), STRV_ARG(r));
-        exit(1);
+        return 1;
     }
 
     Errno err = deleteline(r, ln);
@@ -182,7 +182,7 @@ int del_card(KshParser *parser)
         fprintf(stderr, "ERROR: could not delete card `"STRV_FMT"`: %s\n",
                 STRV_ARG(l),
                 strerror(err));
-        exit(1);
+        return 1;
     }
 
     return 0;
@@ -199,7 +199,7 @@ int del_repo(KshParser *parser)
     char *repo_path = get_repo_path(n);
     if (!repo_path) {
         fputs("ERROR: could not allocate memory\n", stderr);
-        exit(1);
+        return 1;
     }
 
     if (remove(repo_path) < 0) {
@@ -207,7 +207,7 @@ int del_repo(KshParser *parser)
                 repo_path,
                 strerror(errno));
         free(repo_path);
-        exit(1);
+        return 1;
     }
 
     free(repo_path);
@@ -255,6 +255,8 @@ int main(int argc, char **argv)
     KshParser parser;
     ksh_init_from_cargs(&parser, argc, argv);
     ksh_parse(&parser, root);
+
+    return parser.cmd_exit_code;
 }
 
 
