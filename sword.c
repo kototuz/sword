@@ -15,89 +15,14 @@ typedef FILE *Repo;
 
 
 
-static char *get_repo_path(StrView name)
-{
-    char *result = (char *) malloc(name.len + sizeof(REPOS_DIR));
-    if (!result) return NULL;
-    strcpy(result, REPOS_DIR);
-    memcpy(&result[sizeof(REPOS_DIR)-1], name.items, name.len);
-    return result;
-}
 
-static Repo open_repo(StrView repo_name, const char *mode)
-{
-    char *path = get_repo_path(repo_name);
-    if (!path) return NULL;
-    Repo repo = fopen(path, mode);
-    if (!repo) return NULL;
-    free(path);
-    return repo;
-}
+static size_t file_read_until_delim_alloc(FILE *f, int until, char **result, Errno *err);
+static size_t file_read_until_delim(FILE *f, int until, char *buf, size_t bufsize);
 
-static Errno deleteline(StrView repo_name, size_t ln)
-{
-    Repo f = open_repo(repo_name, "r");
-    if (!f) { return errno; }
+static Errno remove_repo_line(StrView file_name, size_t ln);
+static Repo open_repo(StrView repo_name, const char *mode);
+static char *get_repo_path(StrView name);
 
-    Repo copy = fopen("copy", "w");
-    if (!copy) { return errno; }
-
-    int s;
-    size_t i = 0;
-    while ((s = fgetc(f)) != EOF) {
-        if (s == '\n') i++;
-        if (i == ln) continue;
-    }
-
-    fclose(f);
-    fclose(copy);
-
-    char *path = get_repo_path(repo_name);
-    if (!path) return errno;
-
-    remove(path);
-    rename("copy", path);
-
-    free(path);
-    return 0;
-}
-
-static bool get_card_line_number(StrView repo_name, StrView label, size_t *result)
-{
-    Repo repo = open_repo(repo_name, "r");
-    if (!repo) return false;
-
-    size_t bufsize = label.len+2;
-    char *buf = (char *) malloc(bufsize);
-    if (!buf) {
-        fclose(repo);
-        return false;
-    }
-
-    int s = '\n';
-    size_t ln = 0;
-    do {
-        if (s == '\n') {
-            ln++;
-            if (!fgets(buf, bufsize, repo)) {
-                fclose(repo);
-                free(buf);
-                return false;
-            }
-
-            if (strv_eq(label, strv_new(buf, bufsize-2))) {
-                *result = ln-1;
-                fclose(repo);
-                free(buf);
-                return true;
-            }
-        }
-    } while ((s = fgetc(repo)) != EOF);
-
-    free(buf);
-    fclose(repo);
-    return false;
-}
 
 
 // TODO: check if the card already exists
@@ -170,22 +95,47 @@ int del_card(KshParser *parser)
         )
     });
 
-    size_t ln;
-    if (!get_card_line_number(r, l, &ln)) {
-        fprintf(stderr, "ERROR: could not find label `"STRV_FMT"` in repo `"STRV_FMT"`\n",
-                STRV_ARG(l), STRV_ARG(r));
+    Repo repo = open_repo(r, "r");
+    if (!repo) {
+        fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
+                STRV_ARG(r),
+                strerror(errno));
         return 1;
     }
 
-    Errno err = deleteline(r, ln);
-    if (err != 0) {
-        fprintf(stderr, "ERROR: could not delete card `"STRV_FMT"`: %s\n",
-                STRV_ARG(l),
-                strerror(err));
+    size_t bufsize = l.len+2;
+    char *buf = (char *) malloc(bufsize);
+    if (!buf) {
+        perror("ERROR: could not allocate memory");
         return 1;
     }
 
-    return 0;
+    memset(buf, '\0', bufsize);
+
+    for (size_t line_num = 0;
+         fgets(buf, bufsize, repo);
+         line_num++)
+    {
+        if (buf[bufsize-2] == '=') {
+            if (strv_eq(l, strv_new(buf, bufsize-2))) {
+                fclose(repo);
+                if (remove_repo_line(r, line_num) != 0) {
+                    perror("ERROR: could not remove line");
+                    return 1;
+                }
+                return 0;
+            }
+        }
+
+        while (fgetc(repo) != '\n');
+    }
+
+    fprintf(stderr,
+            "ERROR: could not find label `"STRV_FMT"` in repo `"STRV_FMT"`\n",
+            STRV_ARG(l),
+            STRV_ARG(r));
+
+    return 1;
 }
 
 int del_repo(KshParser *parser)
@@ -257,6 +207,108 @@ int main(int argc, char **argv)
     ksh_parse(&parser, root);
 
     return parser.cmd_exit_code;
+}
+
+
+
+
+static char *get_repo_path(StrView name)
+{
+    char *result = (char *) malloc(name.len + sizeof(REPOS_DIR));
+    if (!result) return NULL;
+    strcpy(result, REPOS_DIR);
+    memcpy(&result[sizeof(REPOS_DIR)-1], name.items, name.len);
+    result[name.len + sizeof(REPOS_DIR) - 1] = '\0';
+    return result;
+}
+
+static Repo open_repo(StrView repo_name, const char *mode)
+{
+    char *path = get_repo_path(repo_name);
+    if (!path) return NULL;
+    Repo repo = fopen(path, mode);
+    if (!repo) return NULL;
+    free(path);
+    return repo;
+}
+
+static size_t file_read_until_delim(FILE *f,
+                                    int until,
+                                    char *buf,
+                                    size_t bufsize)
+{
+    assert(until);
+
+    buf[--bufsize] = '\0';
+
+    int s = 0;
+    size_t i = 0;
+    for (; (s = fgetc(f)) != until && s != EOF && i < bufsize; i++)
+    {
+        buf[i] = s;
+    }
+
+    return i;
+}
+
+static size_t file_read_until_delim_alloc(FILE *f,
+                                          int until,
+                                          char **result,
+                                          Errno *err)
+{
+    assert(until);
+
+    int s;
+    size_t length = 0;
+    while ((s = fgetc(f)) != until && s != EOF) length++;
+
+    if (length == 0) return 0;
+
+    char *buf = (char *) malloc(length+1);
+    if (!buf) {
+        *err = errno;
+        return false;
+    }
+
+    buf[length] = '\0';
+
+    fseek(f, -length, SEEK_CUR);
+
+    for (size_t i = 0; i < length; i++) {
+        buf[i] = fgetc(f);
+    }
+
+    *result = buf;
+    return true;
+}
+
+static Errno remove_repo_line(StrView file_name, size_t ln)
+{
+    Repo f = open_repo(file_name, "r");
+    if (!f) { return errno; }
+
+    Repo copy = fopen("copy", "w");
+    if (!copy) { return errno; }
+
+    int s;
+    size_t i = 0;
+    while ((s = fgetc(f)) != EOF) {
+        if (s == '\n') i++;
+        if (i == ln) continue;
+        fputc(s, copy);
+    }
+
+    fclose(f);
+    fclose(copy);
+
+    char *path = get_repo_path(file_name);
+    if (!path) return errno;
+
+    remove(path);
+    rename("copy", path);
+
+    free(path);
+    return 0;
 }
 
 
