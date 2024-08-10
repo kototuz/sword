@@ -10,16 +10,16 @@
 
 
 
-typedef int Errno;
+typedef int Err;
 typedef FILE *Repo;
 
 
+static void *alloc(size_t size);
 
-
-static size_t file_read_until_delim_alloc(FILE *f, int until, char **result, Errno *err);
+static size_t file_read_until_delim_alloc(FILE *f, int until, char **result, Err *err);
 static size_t file_read_until_delim(FILE *f, int until, char *buf, size_t bufsize);
 
-static Errno remove_repo_line(StrView file_name, size_t ln);
+static Err remove_repo_line(StrView file_name, size_t ln);
 static Repo open_repo(StrView repo_name, const char *mode);
 static char *get_repo_path(StrView name);
 
@@ -41,21 +41,11 @@ int new_card(KshParser *parser)
     }); 
 
     Repo repo = open_repo(r, "r");
-    if (!repo) {
-        fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
-                STRV_ARG(r),
-                strerror(errno));
-        return 1;
-    }
+    if (!repo) return 1;
     fclose(repo);
 
     repo = open_repo(r, "a");
-    if (!repo) {
-        fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
-                STRV_ARG(r),
-                strerror(errno));
-        return 1;
-    }
+    if (!repo) return 1;
 
     fprintf(repo, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
 
@@ -72,12 +62,7 @@ int new_repo(KshParser *parser)
     });
 
     Repo new_repo = open_repo(n, "w");
-    if (!new_repo) {
-        fprintf(stderr, "ERROR: could not create new repo `"STRV_FMT"`: %s\n",
-                STRV_ARG(n),
-                strerror(errno));
-        return 1;
-    }
+    if (!new_repo) return 1;
 
     fclose(new_repo);
     return 0;
@@ -96,19 +81,11 @@ int del_card(KshParser *parser)
     });
 
     Repo repo = open_repo(r, "r");
-    if (!repo) {
-        fprintf(stderr, "ERROR: could not open repo `"STRV_FMT"`: %s\n",
-                STRV_ARG(r),
-                strerror(errno));
-        return 1;
-    }
+    if (!repo) return 1;
 
     size_t bufsize = l.len+2;
-    char *buf = (char *) malloc(bufsize);
-    if (!buf) {
-        perror("ERROR: could not allocate memory");
-        return 1;
-    }
+    char *buf = (char *) alloc(bufsize);
+    if (!buf) return 1;
 
     memset(buf, '\0', bufsize);
 
@@ -119,10 +96,7 @@ int del_card(KshParser *parser)
         if (buf[bufsize-2] == '=') {
             if (strv_eq(l, strv_new(buf, bufsize-2))) {
                 fclose(repo);
-                if (remove_repo_line(r, line_num) != 0) {
-                    perror("ERROR: could not remove line");
-                    return 1;
-                }
+                if (remove_repo_line(r, line_num) != 0) return 1;
                 return 0;
             }
         }
@@ -147,10 +121,7 @@ int del_repo(KshParser *parser)
     });
 
     char *repo_path = get_repo_path(n);
-    if (!repo_path) {
-        fputs("ERROR: could not allocate memory\n", stderr);
-        return 1;
-    }
+    if (!repo_path) return 1;
 
     if (remove(repo_path) < 0) {
         fprintf(stderr, "ERROR: could not delete repo %s: %s\n",
@@ -214,7 +185,7 @@ int main(int argc, char **argv)
 
 static char *get_repo_path(StrView name)
 {
-    char *result = (char *) malloc(name.len + sizeof(REPOS_DIR));
+    char *result = (char *) alloc(name.len + sizeof(REPOS_DIR));
     if (!result) return NULL;
     strcpy(result, REPOS_DIR);
     memcpy(&result[sizeof(REPOS_DIR)-1], name.items, name.len);
@@ -227,7 +198,14 @@ static Repo open_repo(StrView repo_name, const char *mode)
     char *path = get_repo_path(repo_name);
     if (!path) return NULL;
     Repo repo = fopen(path, mode);
-    if (!repo) return NULL;
+    if (!repo) {
+        fprintf(stderr,
+                "ERROR: could not open repo `"STRV_FMT"`: %s\n",
+                STRV_ARG(repo_name),
+                strerror(errno));
+        return NULL;
+    }
+
     free(path);
     return repo;
 }
@@ -254,7 +232,7 @@ static size_t file_read_until_delim(FILE *f,
 static size_t file_read_until_delim_alloc(FILE *f,
                                           int until,
                                           char **result,
-                                          Errno *err)
+                                          Err *err)
 {
     assert(until);
 
@@ -264,7 +242,7 @@ static size_t file_read_until_delim_alloc(FILE *f,
 
     if (length == 0) return 0;
 
-    char *buf = (char *) malloc(length+1);
+    char *buf = (char *) alloc(length+1);
     if (!buf) {
         *err = errno;
         return false;
@@ -282,13 +260,13 @@ static size_t file_read_until_delim_alloc(FILE *f,
     return true;
 }
 
-static Errno remove_repo_line(StrView file_name, size_t ln)
+static Err remove_repo_line(StrView file_name, size_t ln)
 {
     Repo f = open_repo(file_name, "r");
-    if (!f) { return errno; }
+    if (!f) return 1;
 
-    Repo copy = fopen("copy", "w");
-    if (!copy) { return errno; }
+    Repo copy = open_repo(STRV_LIT("copy"), "w");
+    if (!copy) return 1;
 
     int s;
     size_t i = 0;
@@ -302,13 +280,26 @@ static Errno remove_repo_line(StrView file_name, size_t ln)
     fclose(copy);
 
     char *path = get_repo_path(file_name);
-    if (!path) return errno;
+    if (!path) return 1;
 
     remove(path);
     rename("copy", path);
 
     free(path);
     return 0;
+}
+
+static void *alloc(size_t size)
+{
+    void *result = malloc(size);
+    if (!result) {
+        fprintf(stderr,
+                "ERROR: could not allocate memory: %s\n",
+                strerror(errno));
+        return NULL;
+    }
+
+    return result;
 }
 
 
