@@ -38,6 +38,14 @@ if [[ $1 = "test" ]]; then
         echo "FAILED"
     fi
 
+    # dump repo
+    print_and_execute "./sword.out repo dump +n test" return
+    if [ "$return" = "yes=da" ]; then
+        echo "OK"
+    else
+        echo "FAILED"
+    fi
+
     # del card
     print_and_execute "./sword.out card del +r test +l yes" return
     if [ ! "$(sed '1q;d' ./repos.d/test)" = "yes=da" ]; then

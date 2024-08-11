@@ -156,13 +156,33 @@ int repo_list(KshParser *parser)
     return 0;
 }
 
+int repo_dump(KshParser *parser)
+{
+    StrView n; // repo name
+
+    ksh_parse_args(parser, &(KshArgs){
+        .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
+    });
+
+    Repo repo = open_repo(n, "r");
+    if (!repo) return 1;
+
+    char buf[100];
+    while (fgets(buf, sizeof(buf), repo)) {
+        printf(buf);
+    }
+
+    return 0;
+}
+
 int manage_repos(KshParser *parser)
 {
     ksh_parse_args(parser, &(KshArgs){
         .subcmds = KSH_SUBCMDS(
             KSH_SUBCMD(repo_new, "new", "create new repo"),
             KSH_SUBCMD(repo_del, "del", "delete repo"),
-            KSH_SUBCMD(repo_list, "list", "list all repositories")
+            KSH_SUBCMD(repo_list, "list", "list all repositories"),
+            KSH_SUBCMD(repo_dump, "dump", "dump repo to stdout")
         )
     });
 
