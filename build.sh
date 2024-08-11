@@ -23,7 +23,7 @@ if [[ $1 = "test" ]]; then
 
 
     # new repo
-    print_and_execute "./sword.out new repo +n test" return
+    print_and_execute "./sword.out repo new +n test" return
     if [ -f ./repos.d/test ]; then
         echo "OK"
     else
@@ -31,7 +31,7 @@ if [[ $1 = "test" ]]; then
     fi
 
     # new card
-    print_and_execute "./sword.out new card +r test +l yes +t da" return
+    print_and_execute "./sword.out card new +r test +l yes +t da" return
     if [ "$(sed '1q;d' ./repos.d/test)" = "yes=da" ]; then
         echo "OK"
     else
@@ -39,7 +39,7 @@ if [[ $1 = "test" ]]; then
     fi
 
     # del card
-    print_and_execute "./sword.out del card +r test +l yes" return
+    print_and_execute "./sword.out card del +r test +l yes" return
     if [ ! "$(sed '1q;d' ./repos.d/test)" = "yes=da" ]; then
         echo "OK"
     else
@@ -47,7 +47,7 @@ if [[ $1 = "test" ]]; then
     fi
 
     # display all repos
-    print_and_execute "./sword.out ls" return
+    print_and_execute "./sword.out repo list" return
     if [ "$return" = "test" ]; then
         echo "OK"
     else
@@ -55,7 +55,7 @@ if [[ $1 = "test" ]]; then
     fi
 
     # del repo
-    print_and_execute "./sword.out del repo +n test" return
+    print_and_execute "./sword.out repo del +n test" return
     if [ ! -f ./repos.d/test ]; then
         echo "OK"
     else

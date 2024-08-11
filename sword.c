@@ -27,7 +27,7 @@ static char *get_repo_path(StrView name);
 
 
 // TODO: check if the card already exists
-int new_card(KshParser *parser)
+int card_new(KshParser *parser)
 {
     StrView l; // label 
     StrView t; // transcript
@@ -54,22 +54,7 @@ int new_card(KshParser *parser)
     return 0;
 }
 
-int new_repo(KshParser *parser)
-{
-    StrView n; // name
-
-    ksh_parse_args(parser, &(KshArgs){
-        .params = KSH_PARAMS(KSH_PARAM(n, "new repo name"))
-    });
-
-    Repo new_repo = open_repo(n, "w");
-    if (!new_repo) return 1;
-
-    fclose(new_repo);
-    return 0;
-}
-
-int del_card(KshParser *parser)
+int card_del(KshParser *parser)
 {
     StrView r; // repo
     StrView l; // label
@@ -113,7 +98,22 @@ int del_card(KshParser *parser)
     return 1;
 }
 
-int del_repo(KshParser *parser)
+int repo_new(KshParser *parser)
+{
+    StrView n; // name
+
+    ksh_parse_args(parser, &(KshArgs){
+        .params = KSH_PARAMS(KSH_PARAM(n, "new repo name"))
+    });
+
+    Repo new_repo = open_repo(n, "w");
+    if (!new_repo) return 1;
+
+    fclose(new_repo);
+    return 0;
+}
+
+int repo_del(KshParser *parser)
 {
     StrView n; // name
 
@@ -136,31 +136,7 @@ int del_repo(KshParser *parser)
     return 0;
 }
 
-int new(KshParser *parser)
-{
-    ksh_parse_args(parser, &(KshArgs){
-        .subcmds = KSH_SUBCMDS(
-            KSH_SUBCMD(new_repo, "repo", "create new repo"),
-            KSH_SUBCMD(new_card, "card", "create new card")
-        )
-    });
-
-    return 0;
-}
-
-int del(KshParser *parser)
-{
-    ksh_parse_args(parser, &(KshArgs){
-        .subcmds = KSH_SUBCMDS(
-            KSH_SUBCMD(del_repo, "repo", "delete repo"),
-            KSH_SUBCMD(del_card, "card", "delete card")
-        )
-    });
-
-    return 0;
-}
-
-int show_repos(KshParser *parser)
+int repo_list(KshParser *parser)
 {
     (void) parser;
 
@@ -180,13 +156,38 @@ int show_repos(KshParser *parser)
     return 0;
 }
 
+int manage_repos(KshParser *parser)
+{
+    ksh_parse_args(parser, &(KshArgs){
+        .subcmds = KSH_SUBCMDS(
+            KSH_SUBCMD(repo_new, "new", "create new repo"),
+            KSH_SUBCMD(repo_del, "del", "delete repo"),
+            KSH_SUBCMD(repo_list, "list", "list all repositories")
+        )
+    });
+
+    return 0;
+}
+
+int manage_cards(KshParser *parser)
+{
+    ksh_parse_args(parser, &(KshArgs){
+        .subcmds = KSH_SUBCMDS(
+            KSH_SUBCMD(card_new, "new", "create new card"),
+            KSH_SUBCMD(card_del, "del", "delete card")
+        )
+    });
+
+    return 0;
+}
+
+
 int root(KshParser *parser)
 {
     ksh_parse_args(parser, &(KshArgs){
         .subcmds = KSH_SUBCMDS(
-            KSH_SUBCMD(new, "new", "create new (card, repo)"),
-            KSH_SUBCMD(del, "del", "delete"),
-            KSH_SUBCMD(show_repos, "ls", "show all repositories")
+            KSH_SUBCMD(manage_cards, "card", "manage cards"),
+            KSH_SUBCMD(manage_repos, "repo", "manage repos"),
         )
     });
 
