@@ -350,4 +350,3 @@ static void *alloc(size_t size)
 
 
 
-// TODO: exit(1) -> return 1
