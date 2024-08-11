@@ -281,10 +281,13 @@ static Err remove_repo_line(StrView file_name, size_t ln)
 
     char *path = get_repo_path(file_name);
     if (!path) return 1;
+    char *copy_path = get_repo_path(STRV_LIT("copy"));
+    if (!copy_path) return 1;
 
     remove(path);
-    rename("copy", path);
+    rename(copy_path, path);
 
+    free(copy_path);
     free(path);
     return 0;
 }
