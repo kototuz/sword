@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 
 #define REPOS_DIR "./repos.d/"
 
@@ -159,12 +160,33 @@ int del(KshParser *parser)
     return 0;
 }
 
+int show_repos(KshParser *parser)
+{
+    (void) parser;
+
+    DIR *d = opendir(REPOS_DIR);
+    if (!d) {
+        fprintf(stderr, "ERROR: could not open the repos directory: %s\n",
+                strerror(errno));
+        return 1;
+    }
+
+    struct dirent *dir;
+    while ((dir = readdir(d)) != NULL) {
+        if (strncmp(dir->d_name, ".", 1) == 0) continue;
+        puts(dir->d_name);
+    }
+
+    return 0;
+}
+
 int root(KshParser *parser)
 {
     ksh_parse_args(parser, &(KshArgs){
         .subcmds = KSH_SUBCMDS(
             KSH_SUBCMD(new, "new", "create new (card, repo)"),
-            KSH_SUBCMD(del, "del", "delete")
+            KSH_SUBCMD(del, "del", "delete"),
+            KSH_SUBCMD(show_repos, "ls", "show all repositories")
         )
     });
 
