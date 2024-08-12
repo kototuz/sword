@@ -15,6 +15,7 @@ typedef int Err;
 typedef FILE *Repo;
 
 
+
 static void *alloc(size_t size);
 
 static size_t file_read_until_delim_alloc(FILE *f, int until, char **result, Err *err);
@@ -125,8 +126,8 @@ int repo_del(KshParser *parser)
     if (!repo_path) return 1;
 
     if (remove(repo_path) < 0) {
-        fprintf(stderr, "ERROR: could not delete repo %s: %s\n",
-                repo_path,
+        fprintf(stderr, "ERROR: could not delete repo `"STRV_FMT"`: %s\n",
+                STRV_ARG(n),
                 strerror(errno));
         free(repo_path);
         return 1;
