@@ -6,6 +6,7 @@ A flashcard CLI tool powered by [kovsh](https://github.com/zone-11/kovsh)
 $   ./sword.out repo new +n <name>
 $   ./sword.out repo del +n <name>
 $   ./sword.out repo list
+$   ./sword.out repo exam +n <name>
 $   ./sword.out card new +r <repo> +l <label> +t <transcript>
 $   ./sword.out card del +r <repo> +l <label>
 ```
