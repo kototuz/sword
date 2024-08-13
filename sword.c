@@ -185,15 +185,28 @@ int repo_exam(KshParser *parser)
         }
 
         fgetc(stdin);
-        puts("=");
 
         while ((s = fgetc(repo)) != '\n' && s != EOF) {
             fputc(s, stdout);
         }
 
         puts("\n--------------------");
+
+        while (true) {
+            printf("[n/q]: ");
+            s = fgetc(stdin);
+            fgetc(stdin);
+            if (s == 'q') {
+                fclose(repo);
+                return 0;
+            } else if (s == 'n') break;
+            else puts("Wrong answer. Try again");
+        }
+
+        puts("--------------------");
     }
 
+    fclose(repo);
     return 0;
 }
 
@@ -203,9 +216,9 @@ int manage_repos(KshParser *parser)
         .subcmds = KSH_SUBCMDS(
             KSH_SUBCMD(repo_new, "new", "create new repo"),
             KSH_SUBCMD(repo_del, "del", "delete repo"),
-            KSH_SUBCMD(repo_list, "list", "list all repositories"),
             KSH_SUBCMD(repo_dump, "dump", "dump repo to stdout"),
-            KSH_SUBCMD(repo_exam, "exam", "examine repo")
+            KSH_SUBCMD(repo_list, "list", "list all repositories"),
+            KSH_SUBCMD(repo_exam, "exam", "examine repo"),
         )
     });
 

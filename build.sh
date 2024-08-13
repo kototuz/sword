@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CC="gcc"
-CFLAGS="-Wall -Wextra -Wpedantic -g"
+CFLAGS="-Wall -Wextra -Wpedantic -std=c17 -g"
 SRC="sword.c"
 LIB_SRC=kovsh/kovsh.c
 LIB_INCLUDE=kovsh
@@ -72,4 +72,10 @@ if [[ $1 = "test" ]]; then
 
 
     rm -f ./repos.d/*
+elif [ "$1" = "test-preset" ]; then
+    ./sword.out repo new +n test
+    ./sword.out card new +r test +l yes +t da
+    ./sword.out card new +r test +l no +t net
+    ./sword.out card new +r test +l here +t tut
+    ./sword.out card new +r test +l train +t poezd
 fi
