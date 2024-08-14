@@ -447,3 +447,8 @@ static void repo_load(StrView repo_name)
 
     fclose(repo_file);
 }
+
+
+
+// TODO: level of memorization
+// TODO: better ui
