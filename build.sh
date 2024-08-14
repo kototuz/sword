@@ -10,9 +10,8 @@ mkdir -p repos.d
 
 $CC $CFLAGS -o sword.out $SRC $LIB_SRC -I$LIB_INCLUDE
 
-
 print_and_execute() {
-    eval $2=$($1)
+    eval $2="$($1)"
     printf "TEST: %-44s" "$1"
 }
 
@@ -24,7 +23,7 @@ if [ "$1" = "test" ]; then
 
     # new repo
     print_and_execute "./sword.out repo new +n test" return
-    if [ -f ./repos.d/test ]; then
+    if [ -f ./repos.d/test ] && [ "$(sed '1q;d' ./repos.d/test)" = "0" ]; then
         echo "OK"
     else
         echo "FAILED"
@@ -32,7 +31,7 @@ if [ "$1" = "test" ]; then
 
     # new card
     print_and_execute "./sword.out card new +r test +l yes +t da" return
-    if [ "$(sed '1q;d' ./repos.d/test)" = "yes=da" ]; then
+    if [ "$(sed '2q;d' ./repos.d/test)" = "yes=da" ]; then
         echo "OK"
     else
         echo "FAILED"
@@ -40,7 +39,7 @@ if [ "$1" = "test" ]; then
 
     # dump repo
     print_and_execute "./sword.out repo dump +n test" return
-    if [ "$return" = "yes=da" ]; then
+    if [ "$return" = "0" ]; then
         echo "OK"
     else
         echo "FAILED"

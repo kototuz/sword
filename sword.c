@@ -14,20 +14,9 @@
 typedef int Err;
 
 typedef struct {
-    size_t count;
-    char *items;
-} Str;
-
-typedef struct {
-    Str label;
-    Str transcript;
-} RepoCard;
-
-typedef struct {
-    size_t cursor;
-    size_t cards_count;
-    RepoCard *cards;
-} Repo;
+    StrView label;
+    StrView transcript;
+} FlashCard;
 
 
 
@@ -38,10 +27,20 @@ static size_t file_read_until_delim(FILE *f, int until, char *buf, size_t bufsiz
 
 static Err remove_repo_line(StrView file_name, size_t ln);
 static FILE *open_repo(StrView repo_name, const char *mode);
-static Repo repo_load(StrView repo_name);
 static char *get_repo_path(StrView repo_name);
 
+static void repo_load(StrView repo_name);
+static void repo_store();
 
+
+
+static struct {
+    StrView name;
+    size_t cursor;
+    size_t cards_count;
+    FlashCard *cards;
+    char *textbuf;
+} REPO = {0};
 
 // TODO: check if the card already exists
 int card_new(KshParser *parser)
@@ -81,6 +80,7 @@ int card_del(KshParser *parser)
     });
 
     FILE* repo = open_repo(r, "r");
+    while (fgetc(repo) != '\n') {}
 
     size_t bufsize = l.len+2;
     char *buf = (char *) alloc(bufsize);
@@ -192,38 +192,31 @@ int repo_exam(KshParser *parser)
         .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
     });
 
-    FILE* repo = open_repo(n, "r");
-
-    int s;
-    while ((s = fgetc(repo)) != EOF) {
-        while (s != '=') {
-            fputc(s, stdout);
-            s = fgetc(repo);
-        }
-
-        fgetc(stdin);
-
-        while ((s = fgetc(repo)) != '\n' && s != EOF) {
-            fputc(s, stdout);
-        }
-
-        puts("\n--------------------");
-
-        while (true) {
-            printf("[n/q]: ");
-            s = fgetc(stdin);
+    repo_load(n);
+    {
+        for (size_t i = REPO.cursor; i < REPO.cards_count; i++) {
+            printf(STRV_FMT, STRV_ARG(REPO.cards[i].label));
             fgetc(stdin);
-            if (s == 'q') {
-                fclose(repo);
-                return 0;
-            } else if (s == 'n') break;
-            else puts("Wrong answer. Try again");
+            printf(STRV_FMT, STRV_ARG(REPO.cards[i].transcript));
+
+            puts("\n-------------------------");
+            while (true) {
+                printf("[n/q]: ");
+                int cmd = fgetc(stdin);
+                while (fgetc(stdin) != '\n') {}
+                if (cmd == 'n') break;
+                else if (cmd == 'q') {
+                    REPO.cursor = i;
+                    repo_store();
+                    return 0;
+                }
+            }
+            puts("--------------------------");
         }
-
-        puts("--------------------");
     }
+    REPO.cursor = 0;
+    repo_store();
 
-    fclose(repo);
     return 0;
 }
 
@@ -392,58 +385,65 @@ static void *alloc(size_t size)
     return result;
 }
 
-static Repo repo_load(StrView repo_name)
+static void repo_store()
+{
+    FILE *repo_file = open_repo(REPO.name, "w");
+    fprintf(repo_file, "%zu\n", REPO.cursor);
+    for (size_t i = 0; i < REPO.cards_count; i++) {
+        fprintf(repo_file,
+                STRV_FMT"="STRV_FMT"\n",
+                STRV_ARG(REPO.cards[i].label),
+                STRV_ARG(REPO.cards[i].transcript));
+    }
+
+    fclose(repo_file);
+    free(REPO.textbuf);
+    free(REPO.cards);
+}
+
+static void repo_load(StrView repo_name)
 {
     int symbol;
     size_t counter;
     FILE *repo_file;
-    Str *card_part;
-    Repo result;
+    StrView *card_part;
     long cards_start_pos;
     char *textbuf;
 
+    REPO.name = repo_name;
     repo_file = open_repo(repo_name, "r");
 
-    fscanf(repo_file, "%zu\n", &result.cursor);
+    fscanf(repo_file, "%zu\n", &REPO.cursor);
     cards_start_pos = ftell(repo_file);
 
-    result = (Repo){0};
     counter = 0;
     while ((symbol = fgetc(repo_file)) != EOF) {
-        if (symbol == '\n') result.cards_count++;
+        if (symbol == '\n') REPO.cards_count++;
         else if (symbol != '=') counter++;
     }
 
-    result.cards = (RepoCard *) alloc(result.cards_count * sizeof(RepoCard));
-    result.cards[0].label.items = (char *) alloc(counter);
+    REPO.cards = (FlashCard *) alloc(REPO.cards_count * sizeof(FlashCard));
+    REPO.textbuf = (char *) alloc(counter);
 
     fseek(repo_file, cards_start_pos, SEEK_SET);
-    card_part = &result.cards[0].label;
-    textbuf = card_part->items;
+    textbuf = REPO.textbuf;
+    card_part = &REPO.cards[0].label;
+    card_part->items = textbuf;
     counter = 0;
-    while ((symbol = fgetc(repo_file)) != EOF) {
-        switch (symbol) {
-        case '\n':
-            counter++;
-            result.cards[counter].label.items = card_part->items + card_part->count;
-            card_part = &result.cards[counter].label;
-            break;
-
-        case '=':
-            result.cards[counter].transcript.items = card_part->items + card_part->count;
-            card_part = &result.cards[counter].transcript;
-            break;
-
-        default:
+    while (true) {
+        symbol = fgetc(repo_file);
+        if (symbol == '\n') {
+            if (++counter == REPO.cards_count) break;
+            REPO.cards[counter].label.items = card_part->items + card_part->len;
+            card_part = &REPO.cards[counter].label;
+        } else if (symbol == '=') {
+            REPO.cards[counter].transcript.items = card_part->items + card_part->len;
+            card_part = &REPO.cards[counter].transcript;
+        } else {
             *textbuf++ = symbol;
-            card_part->count++;
-            break;
+            card_part->len++;
         }
     }
 
     fclose(repo_file);
-    return result;
 }
-
-
-// TODO: implement repo cursor like a checkpoint
