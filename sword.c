@@ -12,7 +12,22 @@
 
 
 typedef int Err;
-typedef FILE *Repo;
+
+typedef struct {
+    size_t count;
+    char *items;
+} Str;
+
+typedef struct {
+    Str label;
+    Str transcript;
+} RepoCard;
+
+typedef struct {
+    size_t cursor;
+    size_t cards_count;
+    RepoCard *cards;
+} Repo;
 
 
 
@@ -22,8 +37,9 @@ static size_t file_read_until_delim_alloc(FILE *f, int until, char **result);
 static size_t file_read_until_delim(FILE *f, int until, char *buf, size_t bufsize);
 
 static Err remove_repo_line(StrView file_name, size_t ln);
-static Repo open_repo(StrView repo_name, const char *mode);
-static char *get_repo_path(StrView name);
+static FILE *open_repo(StrView repo_name, const char *mode);
+static Repo repo_load(StrView repo_name);
+static char *get_repo_path(StrView repo_name);
 
 
 
@@ -42,7 +58,7 @@ int card_new(KshParser *parser)
         )
     }); 
 
-    Repo repo = open_repo(r, "r");
+    FILE* repo = open_repo(r, "r");
     fclose(repo);
     repo = open_repo(r, "a");
 
@@ -64,7 +80,7 @@ int card_del(KshParser *parser)
         )
     });
 
-    Repo repo = open_repo(r, "r");
+    FILE* repo = open_repo(r, "r");
 
     size_t bufsize = l.len+2;
     char *buf = (char *) alloc(bufsize);
@@ -102,7 +118,8 @@ int repo_new(KshParser *parser)
         .params = KSH_PARAMS(KSH_PARAM(n, "new repo name"))
     });
 
-    Repo new_repo = open_repo(n, "w");
+    FILE* new_repo = open_repo(n, "w");
+    fputs("0\n", new_repo);
     fclose(new_repo);
 
     return 0;
@@ -157,7 +174,7 @@ int repo_dump(KshParser *parser)
         .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
     });
 
-    Repo repo = open_repo(n, "r");
+    FILE* repo = open_repo(n, "r");
 
     char buf[100];
     while (fgets(buf, sizeof(buf), repo)) {
@@ -175,7 +192,7 @@ int repo_exam(KshParser *parser)
         .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
     });
 
-    Repo repo = open_repo(n, "r");
+    FILE* repo = open_repo(n, "r");
 
     int s;
     while ((s = fgetc(repo)) != EOF) {
@@ -271,11 +288,11 @@ static char *get_repo_path(StrView name)
     return result;
 }
 
-static Repo open_repo(StrView repo_name, const char *mode)
+static FILE* open_repo(StrView repo_name, const char *mode)
 {
     char *path = get_repo_path(repo_name);
     if (!path) return NULL;
-    Repo repo = fopen(path, mode);
+    FILE* repo = fopen(path, mode);
     if (!repo) {
         fprintf(stderr,
                 "ERROR: could not open repo `"STRV_FMT"`: %s\n",
@@ -334,10 +351,10 @@ static size_t file_read_until_delim_alloc(FILE *f,
 
 static Err remove_repo_line(StrView file_name, size_t ln)
 {
-    Repo f = open_repo(file_name, "r");
+    FILE* f = open_repo(file_name, "r");
     if (!f) return 1;
 
-    Repo copy = open_repo(STRV_LIT("copy"), "w");
+    FILE* copy = open_repo(STRV_LIT("copy"), "w");
     if (!copy) return 1;
 
     int s;
@@ -374,5 +391,59 @@ static void *alloc(size_t size)
 
     return result;
 }
+
+static Repo repo_load(StrView repo_name)
+{
+    int symbol;
+    size_t counter;
+    FILE *repo_file;
+    Str *card_part;
+    Repo result;
+    long cards_start_pos;
+    char *textbuf;
+
+    repo_file = open_repo(repo_name, "r");
+
+    fscanf(repo_file, "%zu\n", &result.cursor);
+    cards_start_pos = ftell(repo_file);
+
+    result = (Repo){0};
+    counter = 0;
+    while ((symbol = fgetc(repo_file)) != EOF) {
+        if (symbol == '\n') result.cards_count++;
+        else if (symbol != '=') counter++;
+    }
+
+    result.cards = (RepoCard *) alloc(result.cards_count * sizeof(RepoCard));
+    result.cards[0].label.items = (char *) alloc(counter);
+
+    fseek(repo_file, cards_start_pos, SEEK_SET);
+    card_part = &result.cards[0].label;
+    textbuf = card_part->items;
+    counter = 0;
+    while ((symbol = fgetc(repo_file)) != EOF) {
+        switch (symbol) {
+        case '\n':
+            counter++;
+            result.cards[counter].label.items = card_part->items + card_part->count;
+            card_part = &result.cards[counter].label;
+            break;
+
+        case '=':
+            result.cards[counter].transcript.items = card_part->items + card_part->count;
+            card_part = &result.cards[counter].transcript;
+            break;
+
+        default:
+            *textbuf++ = symbol;
+            card_part->count++;
+            break;
+        }
+    }
+
+    fclose(repo_file);
+    return result;
+}
+
 
 // TODO: implement repo cursor like a checkpoint
