@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 CC="gcc"
 CFLAGS="-Wall -Wextra -Wpedantic -std=c17 -g"
@@ -11,13 +11,13 @@ mkdir -p repos.d
 $CC $CFLAGS -o sword.out $SRC $LIB_SRC -I$LIB_INCLUDE
 
 
-function print_and_execute() {
+print_and_execute() {
     eval $2=$($1)
     printf "TEST: %-44s" "$1"
 }
 
 
-if [[ $1 = "test" ]]; then
+if [ "$1" = "test" ]; then
     rm -f ./repos.d/*
 
 
