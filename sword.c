@@ -29,6 +29,7 @@ static Err remove_repo_line(StrView file_name, size_t ln);
 static FILE *open_repo(StrView repo_name, const char *mode);
 static char *get_repo_path(StrView repo_name);
 
+static void repo_del_card_and_store(size_t line_nr);
 static void repo_load(StrView repo_name);
 static void repo_store();
 
@@ -87,28 +88,14 @@ int card_del(KshParser *parser)
         )
     });
 
-    FILE* repo = open_repo(r, "r");
-    while (fgetc(repo) != '\n') {}
-
-    size_t bufsize = l.len+2;
-    char *buf = (char *) alloc(bufsize);
-
-    memset(buf, '\0', bufsize);
-
-    for (size_t line_num = 0;
-         fgets(buf, bufsize, repo);
-         line_num++)
-    {
-        if (buf[bufsize-2] == '=') {
-            if (strv_eq(l, strv_new(buf, bufsize-2))) {
-                fclose(repo);
-                remove_repo_line(r, line_num);
+    repo_load(r);
+        for (size_t i = 0; i < REPO.cards_count; i++) {
+            if (strv_eq(l, REPO.cards[i].label)) {
+                repo_del_card_and_store(i);
                 return 0;
             }
         }
-
-        while (fgetc(repo) != '\n');
-    }
+    repo_store();
 
     fprintf(stderr,
             "ERROR: could not find label `"STRV_FMT"` in repo `"STRV_FMT"`\n",
@@ -391,6 +378,26 @@ static void *alloc(size_t size)
     }
 
     return result;
+}
+
+static void repo_del_card_and_store(size_t line_nr)
+{
+    FILE *repo_file = open_repo(REPO.name, "w");
+    fprintf(repo_file, "%zu\n", REPO.cursor);
+    if (REPO.cards_count < 1) goto exit;
+    for (size_t i = 0; i < REPO.cards_count; i++) {
+        if (i == line_nr) continue;
+        fprintf(repo_file,
+                STRV_FMT"="STRV_FMT"\n",
+                STRV_ARG(REPO.cards[i].label),
+                STRV_ARG(REPO.cards[i].transcript));
+    }
+
+    free(REPO.textbuf);
+    free(REPO.cards);
+
+exit:
+    fclose(repo_file);
 }
 
 static void repo_store()

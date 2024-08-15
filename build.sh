@@ -72,6 +72,7 @@ if [ "$1" = "test" ]; then
 
     rm -f ./repos.d/*
 elif [ "$1" = "test-preset" ]; then
+    rm -f ./repos.d/*
     ./sword.out repo new +n test
     ./sword.out card new +r test +l yes +t da
     ./sword.out card new +r test +l no +t net
