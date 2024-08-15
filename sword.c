@@ -13,9 +13,16 @@
 
 typedef int Err;
 
+typedef enum {
+    MEMOR_LEVEL_GOOD = 'A',
+    MEMOR_LEVEL_NORM,
+    MEMOR_LEVEL_HARD
+} MemorLevel;
+
 typedef struct {
     StrView label;
     StrView transcript;
+    MemorLevel memor_lvl;
 } FlashCard;
 
 
@@ -70,7 +77,7 @@ int card_new(KshParser *parser)
     repo_store();
 
     FILE *repo = open_repo(r, "a");
-    fprintf(repo, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
+    fprintf(repo, STRV_FMT"="STRV_FMT" C\n", STRV_ARG(l), STRV_ARG(t));
     fclose(repo);
 
     return 0;
@@ -190,17 +197,20 @@ int repo_exam(KshParser *parser)
     repo_load(n);
     {
         for (size_t i = REPO.cursor; i < REPO.cards_count; i++) {
+            printf("Memorization level: %c\n", REPO.cards[i].memor_lvl);
             printf(STRV_FMT, STRV_ARG(REPO.cards[i].label));
             fgetc(stdin);
             printf(STRV_FMT, STRV_ARG(REPO.cards[i].transcript));
 
-            puts("\n-------------------------");
+            puts("\n--------------------------");
             while (true) {
-                printf("[n/q]: ");
+                printf("[A|B|C/q]: ");
                 int cmd = fgetc(stdin);
                 while (fgetc(stdin) != '\n') {}
-                if (cmd == 'n') break;
-                else if (cmd == 'q') {
+                if (cmd >= MEMOR_LEVEL_GOOD && cmd <= MEMOR_LEVEL_HARD) {
+                    REPO.cards[i].memor_lvl = cmd;
+                    break;
+                } else if (cmd == 'q') {
                     REPO.cursor = i;
                     repo_store();
                     return 0;
@@ -388,9 +398,10 @@ static void repo_del_card_and_store(size_t line_nr)
     for (size_t i = 0; i < REPO.cards_count; i++) {
         if (i == line_nr) continue;
         fprintf(repo_file,
-                STRV_FMT"="STRV_FMT"\n",
+                STRV_FMT"="STRV_FMT"%c\n",
                 STRV_ARG(REPO.cards[i].label),
-                STRV_ARG(REPO.cards[i].transcript));
+                STRV_ARG(REPO.cards[i].transcript),
+                REPO.cards[i].memor_lvl);
     }
 
     free(REPO.textbuf);
@@ -407,9 +418,10 @@ static void repo_store()
     if (REPO.cards_count < 1) goto exit;
     for (size_t i = 0; i < REPO.cards_count; i++) {
         fprintf(repo_file,
-                STRV_FMT"="STRV_FMT"\n",
+                STRV_FMT"="STRV_FMT"%c\n",
                 STRV_ARG(REPO.cards[i].label),
-                STRV_ARG(REPO.cards[i].transcript));
+                STRV_ARG(REPO.cards[i].transcript),
+                REPO.cards[i].memor_lvl);
     }
 
     free(REPO.textbuf);
@@ -451,17 +463,33 @@ static void repo_load(StrView repo_name)
     card_part->items = textbuf;
     counter = 0;
     while (true) {
-        symbol = fgetc(repo_file);
-        if (symbol == '\n') {
-            if (++counter == REPO.cards_count) break;
+        switch ((symbol = fgetc(repo_file))) {
+        case '\n':
+            if (++counter == REPO.cards_count) goto exit;
             REPO.cards[counter].label.items = card_part->items + card_part->len;
             card_part = &REPO.cards[counter].label;
-        } else if (symbol == '=') {
+            break;
+
+        case '=':
             REPO.cards[counter].transcript.items = card_part->items + card_part->len;
             card_part = &REPO.cards[counter].transcript;
-        } else {
+            break;
+
+        case 'A':
+        case 'B':
+        case 'C':
+            if (fgetc(repo_file) != '\n') {
+                fseek(repo_file, -1, SEEK_CUR);
+                break;
+            }
+            REPO.cards[counter].memor_lvl = symbol;
+            fseek(repo_file, -1, SEEK_CUR);
+            break;
+
+        default:
             *textbuf++ = symbol;
             card_part->len++;
+            break;
         }
     }
 
