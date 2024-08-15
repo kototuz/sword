@@ -42,7 +42,6 @@ static struct {
     char *textbuf;
 } REPO = {0};
 
-// TODO: check if the card already exists
 int card_new(KshParser *parser)
 {
     StrView l; // label 
@@ -57,13 +56,22 @@ int card_new(KshParser *parser)
         )
     }); 
 
-    FILE* repo = open_repo(r, "r");
-    fclose(repo);
-    repo = open_repo(r, "a");
+    repo_load(r);
+        for (size_t i = 0; i < REPO.cards_count; i++) {
+            if (strv_eq(l, REPO.cards[i].label)) {
+                fprintf(stderr,
+                        "ERROR: lable `"STRV_FMT"` already exists\n",
+                        STRV_ARG(l));
+                repo_store();
+                return 1;
+            }
+        }
+    repo_store();
 
+    FILE *repo = open_repo(r, "a");
     fprintf(repo, STRV_FMT"="STRV_FMT"\n", STRV_ARG(l), STRV_ARG(t));
-
     fclose(repo);
+
     return 0;
 }
 
@@ -389,6 +397,7 @@ static void repo_store()
 {
     FILE *repo_file = open_repo(REPO.name, "w");
     fprintf(repo_file, "%zu\n", REPO.cursor);
+    if (REPO.cards_count < 1) goto exit;
     for (size_t i = 0; i < REPO.cards_count; i++) {
         fprintf(repo_file,
                 STRV_FMT"="STRV_FMT"\n",
@@ -396,9 +405,11 @@ static void repo_store()
                 STRV_ARG(REPO.cards[i].transcript));
     }
 
-    fclose(repo_file);
     free(REPO.textbuf);
     free(REPO.cards);
+
+exit:
+    fclose(repo_file);
 }
 
 static void repo_load(StrView repo_name)
@@ -421,6 +432,8 @@ static void repo_load(StrView repo_name)
         if (symbol == '\n') REPO.cards_count++;
         else if (symbol != '=') counter++;
     }
+
+    if (REPO.cards_count < 1) goto exit;
 
     REPO.cards = (FlashCard *) alloc(REPO.cards_count * sizeof(FlashCard));
     REPO.textbuf = (char *) alloc(counter);
@@ -445,6 +458,7 @@ static void repo_load(StrView repo_name)
         }
     }
 
+exit:
     fclose(repo_file);
 }
 
