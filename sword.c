@@ -499,5 +499,6 @@ exit:
 
 
 
+// TODO: lazy flashcard loading
 // TODO: level of memorization
 // TODO: better ui
