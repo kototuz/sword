@@ -1,4 +1,5 @@
-#include "kovsh.h"
+#include "kovsh/kovsh.h"
+#include "cvector.h"
 
 #include <stdio.h>
 #include <assert.h>
@@ -6,25 +7,32 @@
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
+#include <stdint.h>
 
 #define REPOS_DIR "./repos.d/"
+
+#define EMPTY_REPO "0 0 0\n0\n0\n0\n"
 
 
 
 typedef int Err;
 
 typedef enum {
-    MEMOR_LEVEL_GOOD = 'A',
-    MEMOR_LEVEL_NORM,
-    MEMOR_LEVEL_HARD
-} MemorLevel;
+    MEM_LVL_HARD = 0,
+    MEM_LVL_NORM,
+    MEM_LVL_GOOD,
+    MEM_LVL_COUNT
+} MemLvl;
 
 typedef struct {
     StrView label;
     StrView transcript;
-    MemorLevel memor_lvl;
 } FlashCard;
 
+typedef struct {
+    FlashCard *cards;
+    size_t cards_count;
+} FlashCardGroup;
 
 
 static void *alloc(size_t size);
@@ -39,14 +47,21 @@ static char *get_repo_path(StrView repo_name);
 static void repo_del_card_and_store(size_t line_nr);
 static void repo_load(StrView repo_name);
 static void repo_store();
+static void repo_print_info();
 
 
 
 static struct {
     StrView name;
-    size_t cursor;
-    size_t cards_count;
-    FlashCard *cards;
+
+    struct {
+        size_t num;
+        MemLvl group;
+    } cursor;
+
+    cvector(FlashCard) groups[MEM_LVL_COUNT];
+
+    size_t textbuf_size;
     char *textbuf;
 } REPO = {0};
 
@@ -65,20 +80,23 @@ int card_new(KshParser *parser)
     }); 
 
     repo_load(r);
-        for (size_t i = 0; i < REPO.cards_count; i++) {
-            if (strv_eq(l, REPO.cards[i].label)) {
-                fprintf(stderr,
-                        "ERROR: lable `"STRV_FMT"` already exists\n",
-                        STRV_ARG(l));
-                repo_store();
-                return 1;
+        for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
+            FlashCard *it = cvector_begin(REPO.groups[i]);
+            FlashCard *end = cvector_end(REPO.groups[i]);
+            for (; it != end; it++) {
+                if (strv_eq(l, it->label)) {
+                    fprintf(stderr,
+                            "ERROR: card with label `"STRV_FMT"` already exists\n",
+                            STRV_ARG(l));
+                    return 1;
+                }
             }
         }
-    repo_store();
 
-    FILE *repo = open_repo(r, "a");
-    fprintf(repo, STRV_FMT"="STRV_FMT" C\n", STRV_ARG(l), STRV_ARG(t));
-    fclose(repo);
+        REPO.textbuf_size += l.len + t.len;
+        FlashCard new_fc = { l, t };
+        cvector_push_back(REPO.groups[MEM_LVL_HARD], new_fc);
+    repo_store();
 
     return 0;
 }
@@ -96,18 +114,23 @@ int card_del(KshParser *parser)
     });
 
     repo_load(r);
-        for (size_t i = 0; i < REPO.cards_count; i++) {
-            if (strv_eq(l, REPO.cards[i].label)) {
-                repo_del_card_and_store(i);
-                return 0;
+        for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
+            for (size_t j = 0; j < cvector_size(REPO.groups[i]); j++) {
+                FlashCard fc = REPO.groups[i][j];
+                if (strv_eq(l, fc.label)) {
+                    cvector_erase(REPO.groups[i], j);
+                    REPO.textbuf_size -= fc.label.len + fc.transcript.len;
+                    repo_store();
+                    return 0;
+                }
             }
         }
-    repo_store();
 
     fprintf(stderr,
             "ERROR: could not find label `"STRV_FMT"` in repo `"STRV_FMT"`\n",
             STRV_ARG(l),
             STRV_ARG(r));
+    repo_store();
 
     return 1;
 }
@@ -121,7 +144,7 @@ int repo_new(KshParser *parser)
     });
 
     FILE* new_repo = open_repo(n, "w");
-    fputs("0\n", new_repo);
+    fputs(EMPTY_REPO, new_repo);
     fclose(new_repo);
 
     return 0;
@@ -195,31 +218,33 @@ int repo_exam(KshParser *parser)
     });
 
     repo_load(n);
-    {
-        for (size_t i = REPO.cursor; i < REPO.cards_count; i++) {
-            printf("Memorization level: %c\n", REPO.cards[i].memor_lvl);
-            printf(STRV_FMT, STRV_ARG(REPO.cards[i].label));
-            fgetc(stdin);
-            printf(STRV_FMT, STRV_ARG(REPO.cards[i].transcript));
+        for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
+            for (size_t j = 0; j < cvector_size(REPO.groups[i]);) {
+                printf(STRV_FMT, STRV_ARG(REPO.groups[i][j].label));
+                fgetc(stdin);
+                printf(STRV_FMT, STRV_ARG(REPO.groups[i][j].transcript));
 
-            puts("\n--------------------------");
-            while (true) {
-                printf("[A|B|C/q]: ");
-                int cmd = fgetc(stdin);
-                while (fgetc(stdin) != '\n') {}
-                if (cmd >= MEMOR_LEVEL_GOOD && cmd <= MEMOR_LEVEL_HARD) {
-                    REPO.cards[i].memor_lvl = cmd;
-                    break;
-                } else if (cmd == 'q') {
-                    REPO.cursor = i;
-                    repo_store();
-                    return 0;
+                puts("\n--------------------------");
+                while (true) {
+                    printf("[0|1|2/q]: ");
+                    MemLvl cmd = fgetc(stdin);
+                    while (fgetc(stdin) != '\n') {}
+                    if (cmd == 'q') {
+                        REPO.cursor.group = i;
+                        REPO.cursor.num = j;
+                        repo_store();
+                        return 0;
+                    } else if ((cmd -= '0') >= MEM_LVL_HARD && cmd <= MEM_LVL_GOOD) {
+                        if (cmd == i) { j++; break; }
+                        cvector_push_back(REPO.groups[cmd], REPO.groups[i][j]);
+                        cvector_erase(REPO.groups[i], j);
+                        break;
+                    }
                 }
+                puts("--------------------------");
             }
-            puts("--------------------------");
         }
-    }
-    REPO.cursor = 0;
+    REPO.cursor.num = 0;
     repo_store();
 
     return 0;
@@ -392,113 +417,110 @@ static void *alloc(size_t size)
 
 static void repo_del_card_and_store(size_t line_nr)
 {
-    FILE *repo_file = open_repo(REPO.name, "w");
-    fprintf(repo_file, "%zu\n", REPO.cursor);
-    if (REPO.cards_count < 1) goto exit;
-    for (size_t i = 0; i < REPO.cards_count; i++) {
-        if (i == line_nr) continue;
-        fprintf(repo_file,
-                STRV_FMT"="STRV_FMT"%c\n",
-                STRV_ARG(REPO.cards[i].label),
-                STRV_ARG(REPO.cards[i].transcript),
-                REPO.cards[i].memor_lvl);
+    (void) line_nr;
+}
+
+static void repo_print_info()
+{
+    printf("repo `"STRV_FMT"`:\n", STRV_ARG(REPO.name));
+    printf("\tcursor group:  %d\n",  REPO.cursor.group);
+    printf("\tcursor number: %zu\n", REPO.cursor.num);
+    printf("\ttextbuf_size:  %zu\n", REPO.textbuf_size);
+
+    for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
+        printf("\tgroup(lvl=%d, count=%zu):\n", i, cvector_size(REPO.groups[i]));
+        FlashCard *it = cvector_begin(REPO.groups[i]);
+        FlashCard *end = cvector_end(REPO.groups[i]);
+        for (; it != end; it++) {
+            printf("\t\tlabel="STRV_FMT", transcript="STRV_FMT"\n",
+                   STRV_ARG(it->label),
+                   STRV_ARG(it->transcript));
+        }
     }
-
-    free(REPO.textbuf);
-    free(REPO.cards);
-
-exit:
-    fclose(repo_file);
 }
 
 static void repo_store()
 {
     FILE *repo_file = open_repo(REPO.name, "w");
-    fprintf(repo_file, "%zu\n", REPO.cursor);
-    if (REPO.cards_count < 1) goto exit;
-    for (size_t i = 0; i < REPO.cards_count; i++) {
-        fprintf(repo_file,
-                STRV_FMT"="STRV_FMT"%c\n",
-                STRV_ARG(REPO.cards[i].label),
-                STRV_ARG(REPO.cards[i].transcript),
-                REPO.cards[i].memor_lvl);
+
+    fprintf(repo_file,
+            "%d %zu %zu\n",
+            REPO.cursor.group,
+            REPO.cursor.num,
+            REPO.textbuf_size);
+
+    for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
+        fprintf(repo_file, "%zu\n", cvector_size(REPO.groups[i]));
+
+        FlashCard *it = cvector_begin(REPO.groups[i]);
+        FlashCard *end = cvector_end(REPO.groups[i]);
+        for (; it != end; it++) {
+            fprintf(repo_file,
+                    STRV_FMT"="STRV_FMT"\n",
+                    STRV_ARG(it->label),
+                    STRV_ARG(it->transcript));
+        }
+
+        cvector_free(REPO.groups[i]);
     }
 
-    free(REPO.textbuf);
-    free(REPO.cards);
-
-exit:
     fclose(repo_file);
+    if (REPO.textbuf) free(REPO.textbuf);
 }
 
 static void repo_load(StrView repo_name)
 {
-    int symbol;
-    size_t counter;
-    FILE *repo_file;
-    StrView *card_part;
-    long cards_start_pos;
-    char *textbuf;
-
+    FILE *repo_file = open_repo(repo_name, "r");
     REPO.name = repo_name;
-    repo_file = open_repo(repo_name, "r");
 
-    fscanf(repo_file, "%zu\n", &REPO.cursor);
-    cards_start_pos = ftell(repo_file);
+    // repo info
+    fscanf(repo_file, "%d %zu %zu\n",
+           (int *)&REPO.cursor.group,
+           &REPO.cursor.num,
+           &REPO.textbuf_size);
 
-    counter = 0;
-    while ((symbol = fgetc(repo_file)) != EOF) {
-        if (symbol == '\n') REPO.cards_count++;
-        else if (symbol != '=') counter++;
+    if (!REPO.textbuf_size) {
+        fclose(repo_file);
+        return;
     }
 
-    if (REPO.cards_count < 1) goto exit;
+    REPO.textbuf = (char *) alloc(REPO.textbuf_size);
 
-    REPO.cards = (FlashCard *) alloc(REPO.cards_count * sizeof(FlashCard));
-    REPO.textbuf = (char *) alloc(counter);
+    int symbol;
+    size_t cards_count;
+    char *buf = REPO.textbuf;
+    for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
+        fscanf(repo_file, "%zu\n", &cards_count);
+        cvector_init(REPO.groups[i], cards_count, NULL);
+        while (cards_count--) {
+            FlashCard new_fc = {0};
 
-    fseek(repo_file, cards_start_pos, SEEK_SET);
-    textbuf = REPO.textbuf;
-    card_part = &REPO.cards[0].label;
-    card_part->items = textbuf;
-    counter = 0;
-    while (true) {
-        switch ((symbol = fgetc(repo_file))) {
-        case '\n':
-            if (++counter == REPO.cards_count) goto exit;
-            REPO.cards[counter].label.items = card_part->items + card_part->len;
-            card_part = &REPO.cards[counter].label;
-            break;
-
-        case '=':
-            REPO.cards[counter].transcript.items = card_part->items + card_part->len;
-            card_part = &REPO.cards[counter].transcript;
-            break;
-
-        case 'A':
-        case 'B':
-        case 'C':
-            if (fgetc(repo_file) != '\n') {
-                fseek(repo_file, -1, SEEK_CUR);
-                break;
+            new_fc.label.items = buf;
+            while ((symbol = fgetc(repo_file)) != '=') {
+                assert(symbol != EOF && "unreachable");
+                *buf++ = symbol;
+                new_fc.label.len++;
             }
-            REPO.cards[counter].memor_lvl = symbol;
-            fseek(repo_file, -1, SEEK_CUR);
-            break;
 
-        default:
-            *textbuf++ = symbol;
-            card_part->len++;
-            break;
+            new_fc.transcript.items = buf;
+            while ((symbol = fgetc(repo_file)) != '\n') {
+                assert(symbol != EOF && "unreachabel");
+                *buf++ = symbol;
+                new_fc.transcript.len++;
+            }
+
+            cvector_push_back(REPO.groups[i], new_fc);
         }
     }
 
-exit:
+    repo_print_info();
     fclose(repo_file);
 }
 
 
 
+// TODO: rewrite tests in C
+// TODO: we shouldn't use `scanf()` for numbers
 // TODO: lazy flashcard loading
 // TODO: level of memorization
 // TODO: better ui
