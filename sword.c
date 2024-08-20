@@ -43,17 +43,11 @@ typedef struct {
 
 static void *alloc(size_t size);
 
-static size_t file_read_until_delim_alloc(FILE *f, int until, char **result);
-static size_t file_read_until_delim(FILE *f, int until, char *buf, size_t bufsize);
-
-static Err remove_repo_line(StrView file_name, size_t ln);
 static FILE *open_repo(StrView repo_name, const char *mode);
 static char *get_repo_path(StrView repo_name);
 
-static void repo_del_card_and_store(size_t line_nr);
 static void repo_load(StrView repo_name);
 static void repo_store();
-static void repo_print_info();
 
 static MemLvl exam_fc_simple(FlashCard fc);
 static void   render_fc_tui();
@@ -420,82 +414,6 @@ static FILE* open_repo(StrView repo_name, const char *mode)
     return repo;
 }
 
-static size_t file_read_until_delim(FILE *f,
-                                    int until,
-                                    char *buf,
-                                    size_t bufsize)
-{
-    assert(until);
-
-    buf[--bufsize] = '\0';
-
-    int s = 0;
-    size_t i = 0;
-    for (; (s = fgetc(f)) != until && s != EOF && i < bufsize; i++)
-    {
-        buf[i] = s;
-    }
-
-    return i;
-}
-
-static size_t file_read_until_delim_alloc(FILE *f,
-                                          int until,
-                                          char **result)
-{
-    assert(until);
-
-    int s;
-    size_t length = 0;
-    while ((s = fgetc(f)) != until && s != EOF) length++;
-
-    if (length == 0) return 0;
-
-    char *buf = (char *) alloc(length+1);
-    buf[length] = '\0';
-
-    fseek(f, -length, SEEK_CUR);
-
-    for (size_t i = 0; i < length; i++) {
-        buf[i] = fgetc(f);
-    }
-
-    *result = buf;
-    return length;
-}
-
-static Err remove_repo_line(StrView file_name, size_t ln)
-{
-    FILE* f = open_repo(file_name, "r");
-    if (!f) return 1;
-
-    FILE* copy = open_repo(STRV_LIT("copy"), "w");
-    if (!copy) return 1;
-
-    int s;
-    size_t i = 0;
-    while ((s = fgetc(f)) != EOF) {
-        if (s == '\n') i++;
-        if (i == ln) continue;
-        fputc(s, copy);
-    }
-
-    fclose(f);
-    fclose(copy);
-
-    char *path = get_repo_path(file_name);
-    if (!path) return 1;
-    char *copy_path = get_repo_path(STRV_LIT("copy"));
-    if (!copy_path) return 1;
-
-    remove(path);
-    rename(copy_path, path);
-
-    free(copy_path);
-    free(path);
-    return 0;
-}
-
 static void *alloc(size_t size)
 {
     void *result = malloc(size);
@@ -505,30 +423,6 @@ static void *alloc(size_t size)
     }
 
     return result;
-}
-
-static void repo_del_card_and_store(size_t line_nr)
-{
-    (void) line_nr;
-}
-
-static void repo_print_info()
-{
-    printf("repo `"STRV_FMT"`:\n", STRV_ARG(REPO.name));
-    printf("\tcursor group:  %d\n",  REPO.cursor.group);
-    printf("\tcursor number: %zu\n", REPO.cursor.num);
-    printf("\ttextbuf_size:  %zu\n", REPO.textbuf_size);
-
-    for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
-        printf("\tgroup(lvl=%d, count=%zu):\n", i, cvector_size(REPO.groups[i]));
-        FlashCard *it = cvector_begin(REPO.groups[i]);
-        FlashCard *end = cvector_end(REPO.groups[i]);
-        for (; it != end; it++) {
-            printf("\t\tlabel="STRV_FMT", transcript="STRV_FMT"\n",
-                   STRV_ARG(it->label),
-                   STRV_ARG(it->transcript));
-        }
-    }
 }
 
 static void repo_store()
