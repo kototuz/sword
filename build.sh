@@ -8,7 +8,7 @@ LIB_INCLUDE=kovsh
 
 mkdir -p repos.d
 
-$CC $CFLAGS -o sword.out $SRC $LIB_SRC
+$CC $CFLAGS -o sword.out $SRC $LIB_SRC -lncursesw -lmenuw
 
 print_and_execute() {
     eval $2="$($1)"

@@ -1,6 +1,12 @@
 #include "kovsh/kovsh.h"
 #include "cvector.h"
 
+#define _XOPEN_SOURCE 700
+#include <ncursesw/ncurses.h>
+#include <ncursesw/menu.h>
+#include <locale.h>
+
+
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -48,6 +54,10 @@ static void repo_del_card_and_store(size_t line_nr);
 static void repo_load(StrView repo_name);
 static void repo_store();
 static void repo_print_info();
+
+static MemLvl exam_fc_simple(FlashCard fc);
+static void   render_fc_tui();
+static MemLvl exam_fc_tui(FlashCard fc);
 
 
 
@@ -212,41 +222,40 @@ int repo_dump(KshParser *parser)
 int repo_exam(KshParser *parser)
 {
     StrView n; // repo name
+    bool tui = false;
 
     ksh_parse_args(parser, &(KshArgs){
-        .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
+        .params = KSH_PARAMS(KSH_PARAM(n, "repo name")),
+        .flags = KSH_FLAGS(KSH_FLAG(tui, "Enable tui?"))
     });
 
+    MemLvl (*exam_fc_fn)(FlashCard);
+    if (tui) {
+        setlocale(LC_ALL, "");
+        initscr();
+        render_fc_tui();
+        exam_fc_fn = exam_fc_tui;
+    } else {
+        exam_fc_fn = exam_fc_simple;
+    }
+
     repo_load(n);
+    {
         for (MemLvl i = 0; i < MEM_LVL_COUNT; i++) {
             for (size_t j = 0; j < cvector_size(REPO.groups[i]);) {
-                printf(STRV_FMT, STRV_ARG(REPO.groups[i][j].label));
-                fgetc(stdin);
-                printf(STRV_FMT, STRV_ARG(REPO.groups[i][j].transcript));
-
-                puts("\n--------------------------");
-                while (true) {
-                    printf("[0|1|2/q]: ");
-                    MemLvl cmd = fgetc(stdin);
-                    while (fgetc(stdin) != '\n') {}
-                    if (cmd == 'q') {
-                        REPO.cursor.group = i;
-                        REPO.cursor.num = j;
-                        repo_store();
-                        return 0;
-                    } else if ((cmd -= '0') >= MEM_LVL_HARD && cmd <= MEM_LVL_GOOD) {
-                        if (cmd == i) { j++; break; }
-                        cvector_push_back(REPO.groups[cmd], REPO.groups[i][j]);
-                        cvector_erase(REPO.groups[i], j);
-                        break;
-                    }
-                }
-                puts("--------------------------");
+                MemLvl new_lvl = exam_fc_fn(REPO.groups[i][j]);
+                if (new_lvl != i) {
+                    cvector_push_back(REPO.groups[new_lvl], REPO.groups[i][j]);
+                    cvector_erase(REPO.groups[i], j);
+                } else j++;
             }
         }
-    REPO.cursor.num = 0;
+
+        REPO.cursor.num = 0;
+    }
     repo_store();
 
+    if (tui) endwin();
     return 0;
 }
 
@@ -301,6 +310,89 @@ int main(int argc, char **argv)
 
 
 
+static MemLvl exam_fc_simple(FlashCard fc)
+{
+    printf(STRV_FMT, STRV_ARG(fc.label));
+    fgetc(stdin);
+    printf(STRV_FMT, STRV_ARG(fc.transcript));
+
+    puts("\n--------------------------");
+    while (true) {
+        printf("[0|1|2]: ");
+        MemLvl mem_lvl = fgetc(stdin) - '0';
+        while (fgetc(stdin) != '\n') {}
+        if (mem_lvl >= MEM_LVL_HARD && mem_lvl <= MEM_LVL_GOOD) {
+            puts("--------------------------");
+            return mem_lvl;
+        }
+    }
+    puts("--------------------------");
+}
+
+#define FC_WIN_WIDTH  30
+#define FC_WIN_HEIGHT 15
+static void render_fc_tui(void)
+{
+    noecho();
+    curs_set(0);
+    keypad(stdscr, TRUE);
+    box(stdscr, 0, 0);
+    start_color();
+    init_pair(1, COLOR_YELLOW, COLOR_BLACK);
+    bkgd(COLOR_PAIR(1));
+}
+
+// assumes that ncurses is initialized
+static MemLvl exam_fc_tui(FlashCard fc)
+{
+    clear();
+    box(stdscr, 0, 0);
+
+    mvprintw(1, (getmaxx(stdscr) - fc.label.len)*0.5,
+             STRV_FMT, STRV_ARG(fc.label));
+
+    ITEM *menu_items[] = {
+        new_item("hard", ""),
+        new_item("norm", ""),
+        new_item("good", ""),
+        new_item("show", ""),
+        NULL
+    };
+
+    MENU *menu = new_menu(&menu_items[3]);
+    set_menu_sub(menu, derwin(stdscr, 0, 0, getmaxy(stdscr)-1, (getmaxx(stdscr)-4)*0.5));
+    set_menu_mark(menu, "");
+    post_menu(menu);
+
+    while (getch() != 10) {}
+
+    mvprintw(2, (getmaxx(stdscr) - fc.transcript.len)*0.5,
+             STRV_FMT, STRV_ARG(fc.transcript));
+
+    free_item(menu_items[3]);
+    menu_items[3] = NULL;
+    unpost_menu(menu);
+    set_menu_sub(menu, derwin(stdscr, 0, 0, getmaxy(stdscr)-1, (getmaxx(stdscr)-14)*0.5));
+    set_menu_items(menu, menu_items);
+    set_menu_format(menu, 1, 3);
+    set_current_item(menu, menu_items[1]);
+    box(stdscr, 0, 0);
+    post_menu(menu);
+
+    int c;
+    while ((c = getch()) != 10) {
+        switch (c) {
+        case KEY_LEFT:  menu_driver(menu, REQ_PREV_ITEM); break;
+        case KEY_RIGHT: menu_driver(menu, REQ_NEXT_ITEM); break;
+        }
+    }
+
+    ITEM *cur_item = current_item(menu);
+    if      (cur_item == menu_items[0]) return MEM_LVL_HARD;
+    else if (cur_item == menu_items[1]) return MEM_LVL_NORM;
+    else if (cur_item == menu_items[2]) return MEM_LVL_GOOD;
+    assert(0 && "unreachable");
+}
 
 static char *get_repo_path(StrView name)
 {
@@ -513,7 +605,6 @@ static void repo_load(StrView repo_name)
         }
     }
 
-    repo_print_info();
     fclose(repo_file);
 }
 
