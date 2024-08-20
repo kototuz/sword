@@ -503,9 +503,6 @@ static void repo_load(StrView repo_name)
 }
 
 
-
+// TODO: maybe remove the `card` subcommand
 // TODO: rewrite tests in C
 // TODO: we shouldn't use `scanf()` for numbers
-// TODO: lazy flashcard loading
-// TODO: level of memorization
-// TODO: better ui
