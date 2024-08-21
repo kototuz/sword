@@ -26,11 +26,6 @@ typedef struct {
     StrView transcript;
 } FlashCard;
 
-typedef struct {
-    FlashCard *cards;
-    size_t cards_count;
-} FlashCardGroup;
-
 typedef enum {
     FLASH_CARD_GROUP_KIND_EXAM,
     FLASH_CARD_GROUP_KIND_UNEXAM,
@@ -235,19 +230,17 @@ int repo_exam(KshParser *parser)
     {
         cvector(FlashCard) repeat = {0};
         cvector(FlashCard) group = REPO.fc_groups[FLASH_CARD_GROUP_KIND_UNEXAM];
-        size_t size;
-        size_t i;
+        size_t size, i;
 
         if (cvector_size(group) > 0) {
             size = cvector_size(group);
-            while (size--) {
-                if (!exam_fc_fn(group[0])) {
-                    cvector_push_back(repeat, group[0]);
+            for (i = 0; i < size; i++) {
+                if (!exam_fc_fn(group[i])) {
+                    cvector_push_back(repeat, group[i]);
                 }
-
-                cvector_push_back(REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM], group[0]);
-                cvector_erase(group, 0);
+                cvector_push_back(REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM], group[i]);
             }
+            cvector_clear(group);
         } else {
             group = REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM];
             size = cvector_size(group);
