@@ -46,11 +46,13 @@ static bool exam_fc_simple(FlashCard fc, size_t remains, size_t repetition);
 static void render_fc_tui();
 static bool exam_fc_tui(FlashCard fc, size_t remains, size_t repetition);
 
-
-
 static struct {
     StrView name;
-    cvector(FlashCard) fc_groups[FLASH_CARD_GROUP_KIND_COUNT];
+
+    FlashCard *fcs_begin;      //
+    FlashCard *unexam_fcs_ptr; // one buffer
+    FlashCard *fcs_end;        //
+
     size_t textbuf_size;
     char *textbuf;
 } REPO = {0};
@@ -71,21 +73,17 @@ int card_new(KshParser *parser)
 
     repo_load(r);
     {
-        for (FlashCardGroupKind i = 0; i < FLASH_CARD_GROUP_KIND_COUNT; i++) {
-            size_t size = cvector_size(REPO.fc_groups[i]);
-            for (size_t j = 0; j < size; j++) {
-                if (strv_eq(l, REPO.fc_groups[i][j].label)) {
-                    fprintf(stderr,
-                            "ERROR: card with label `"STRV_FMT"` already exists\n",
-                            STRV_ARG(l));
-                    return 1;
-                }
+        for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
+            if (strv_eq(l, it->label)) {
+                fprintf(stderr,
+                        "ERROR: card with label `"STRV_FMT"` already exists\n",
+                        STRV_ARG(l));
+                return 1;
             }
         }
 
         REPO.textbuf_size += l.len + t.len;
-        FlashCard new_fc = { l, t };
-        cvector_push_back(REPO.fc_groups[FLASH_CARD_GROUP_KIND_UNEXAM], new_fc);
+        *REPO.fcs_end++ = (FlashCard){ l, t };
     }
     repo_store();
 
@@ -106,16 +104,12 @@ int card_del(KshParser *parser)
 
     repo_load(r);
     {
-        for (FlashCardGroupKind i = 0; i < FLASH_CARD_GROUP_KIND_COUNT; i++) {
-            size_t size = cvector_size(REPO.fc_groups[i]);
-            for (size_t j = 0; j != size; j++) {
-                if (strv_eq(l, REPO.fc_groups[i][j].label)) {
-                    cvector_erase(REPO.fc_groups[i], j);
-                    REPO.textbuf_size -= REPO.fc_groups[i][j].label.len
-                                       + REPO.fc_groups[i][j].transcript.len;
-                    repo_store();
-                    return 0;
-                }
+        for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
+            if (strv_eq(l, it->label)) {
+                REPO.textbuf_size -= it->label.len + it->transcript.len;
+                *it = *(REPO.fcs_end++ - 1);
+                repo_store();
+                return 0;
             }
         }
 
@@ -138,10 +132,7 @@ int repo_new(KshParser *parser)
     });
 
     FILE* new_repo = open_repo(n, "w");
-    fprintf(new_repo, "%zu\n", (size_t)0);
-    for (FlashCardGroupKind i = 0; i < FLASH_CARD_GROUP_KIND_COUNT; i++) {
-        fprintf(new_repo, "%zu\n", (size_t)0);
-    }
+    fputs("0 0 0\n", new_repo);
     fclose(new_repo);
 
     return 0;
@@ -228,38 +219,37 @@ int repo_exam(KshParser *parser)
 
     repo_load(n);
     {
-        cvector(FlashCard) repeat = {0};
-        cvector(FlashCard) group = REPO.fc_groups[FLASH_CARD_GROUP_KIND_UNEXAM];
-        size_t size, i;
-
-        if (cvector_size(group) > 0) {
-            size = cvector_size(group);
-            for (i = 0; i < size; i++) {
-                if (!exam_fc_fn(group[i], size-i, cvector_size(repeat))) {
-                    cvector_push_back(repeat, group[i]);
-                }
-                cvector_push_back(REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM], group[i]);
-            }
-            cvector_clear(group);
+        bool *ok_info;
+        FlashCard *begin, *end;
+        if (REPO.unexam_fcs_ptr < REPO.fcs_end) {
+            begin = REPO.unexam_fcs_ptr;
+            end = REPO.fcs_end;
+            REPO.unexam_fcs_ptr = REPO.fcs_end;
         } else {
-            group = REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM];
-            size = cvector_size(group);
-            for (i = 0; i < size; i++) {
-                if (!exam_fc_fn(group[i], size-i, cvector_size(repeat))) {
-                    cvector_push_back(repeat, group[i]);
+            begin = REPO.fcs_begin;
+            end = REPO.unexam_fcs_ptr;
+        }
+
+        ok_info = (bool *) alloc(sizeof(*ok_info) * (end - begin));
+
+        bool *ok;
+        FlashCard *it;
+        size_t repeat_count = 0;
+        for (it = begin, ok = ok_info; it != end; it++, ok++) {
+            if (!(*ok = exam_fc_fn(*it, end - it, repeat_count))) {
+                repeat_count++;
+            }
+        }
+
+        while (repeat_count > 0) {
+            for (it = begin, ok = ok_info; it != end; it++, ok++) {
+                if (*ok) continue;
+                else if (exam_fc_fn(*it, 0, repeat_count)) {
+                    *ok = true;
+                    repeat_count--;
                 }
             }
         }
-
-        while (cvector_size(repeat)) {
-            for (i = 0; i < cvector_size(repeat);) {
-                if (exam_fc_fn(repeat[i], 0, cvector_size(repeat))) {
-                    cvector_erase(repeat, i);
-                } else i++;
-            }
-        }
-
-        cvector_free(repeat);
     }
     repo_store();
 
@@ -445,24 +435,22 @@ static void repo_store()
 {
     FILE *repo_file = open_repo(REPO.name, "w");
 
-    fprintf(repo_file, "%zu\n", REPO.textbuf_size);
+    fprintf(repo_file,
+            "%zu %zu %zu\n",
+            REPO.textbuf_size,
+            REPO.unexam_fcs_ptr - REPO.fcs_begin,
+            REPO.fcs_end - REPO.unexam_fcs_ptr);
 
-    for (FlashCardGroupKind i = 0; i < FLASH_CARD_GROUP_KIND_COUNT; i++) {
-        fprintf(repo_file, "%zu\n", cvector_size(REPO.fc_groups[i]));
-        FlashCard *it = cvector_begin(REPO.fc_groups[i]);
-        FlashCard *end = cvector_end(REPO.fc_groups[i]);
-        for (; it != end; it++) {
-            fprintf(repo_file,
-                    STRV_FMT"="STRV_FMT"\n",
-                    STRV_ARG(it->label),
-                    STRV_ARG(it->transcript));
-        }
-
-        cvector_free(REPO.fc_groups[i]);
+    for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
+        fprintf(repo_file,
+                STRV_FMT"="STRV_FMT"\n",
+                STRV_ARG(it->label),
+                STRV_ARG(it->transcript));
     }
 
-    fclose(repo_file);
+    free(REPO.fcs_begin);
     if (REPO.textbuf) free(REPO.textbuf);
+    fclose(repo_file);
 }
 
 static void repo_load(StrView repo_name)
@@ -471,39 +459,39 @@ static void repo_load(StrView repo_name)
     REPO.name = repo_name;
 
     // repo info
-    fscanf(repo_file, "%zu\n", &REPO.textbuf_size);
-    if (!REPO.textbuf_size) {
-        fclose(repo_file);
-        return;
-    }
+    size_t exam_fcs_count, unexam_fcs_count;
+    fscanf(repo_file,
+            "%zu %zu %zu\n",
+            &REPO.textbuf_size,
+            &exam_fcs_count,
+            &unexam_fcs_count);
 
-    REPO.textbuf = (char *) alloc(REPO.textbuf_size);
+    if (REPO.textbuf_size) REPO.textbuf = (char *) alloc(REPO.textbuf_size);
+
+    REPO.fcs_begin = (FlashCard *) alloc((exam_fcs_count + unexam_fcs_count + 1) * sizeof(FlashCard));
+    REPO.unexam_fcs_ptr = REPO.fcs_begin + exam_fcs_count;
+    REPO.fcs_end = REPO.unexam_fcs_ptr + unexam_fcs_count;
 
     int symbol;
     char *buf = REPO.textbuf;
-    size_t fc_group_size;
-    for (FlashCardGroupKind i = 0; i < FLASH_CARD_GROUP_KIND_COUNT; i++) {
-        fscanf(repo_file, "%zu\n", &fc_group_size);
-        cvector_init(REPO.fc_groups[i], fc_group_size, NULL);
-        while (fc_group_size--) {
-            FlashCard new_fc = {0};
+    for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
+        FlashCard new_fc = {0};
 
-            new_fc.label.items = buf;
-            while ((symbol = fgetc(repo_file)) != '=') {
-                assert(symbol != EOF && "unreachable");
-                *buf++ = symbol;
-                new_fc.label.len++;
-            }
-
-            new_fc.transcript.items = buf;
-            while ((symbol = fgetc(repo_file)) != '\n') {
-                assert(symbol != EOF && "unreachabel");
-                *buf++ = symbol;
-                new_fc.transcript.len++;
-            }
-
-            cvector_push_back(REPO.fc_groups[i], new_fc);
+        new_fc.label.items = buf;
+        while ((symbol = fgetc(repo_file)) != '=') {
+            assert(symbol != EOF && "unreachable");
+            *buf++ = symbol;
+            new_fc.label.len++;
         }
+
+        new_fc.transcript.items = buf;
+        while ((symbol = fgetc(repo_file)) != '\n') {
+            assert(symbol != EOF && "unreachabel");
+            *buf++ = symbol;
+            new_fc.transcript.len++;
+        }
+
+        *it = new_fc;
     }
 
     fclose(repo_file);
@@ -511,7 +499,6 @@ static void repo_load(StrView repo_name)
 
 
 // TODO: card rating
-// TODO: use just malloc instead of cvector.h
 // TODO: random cards
 // TODO: card limit per exam
 // TODO: maybe remove the `card` subcommand
