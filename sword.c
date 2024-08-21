@@ -42,9 +42,9 @@ static char *get_repo_path(StrView repo_name);
 static void repo_load(StrView repo_name);
 static void repo_store();
 
-static bool exam_fc_simple(FlashCard fc);
+static bool exam_fc_simple(FlashCard fc, size_t remains, size_t repetition);
 static void render_fc_tui();
-static bool exam_fc_tui(FlashCard fc);
+static bool exam_fc_tui(FlashCard fc, size_t remains, size_t repetition);
 
 
 
@@ -216,7 +216,7 @@ int repo_exam(KshParser *parser)
         .flags = KSH_FLAGS(KSH_FLAG(tui, "Enable tui?"))
     });
 
-    bool (*exam_fc_fn)(FlashCard);
+    bool (*exam_fc_fn)(FlashCard, size_t, size_t);
     if (tui) {
         setlocale(LC_ALL, "");
         initscr();
@@ -235,7 +235,7 @@ int repo_exam(KshParser *parser)
         if (cvector_size(group) > 0) {
             size = cvector_size(group);
             for (i = 0; i < size; i++) {
-                if (!exam_fc_fn(group[i])) {
+                if (!exam_fc_fn(group[i], size-i, cvector_size(repeat))) {
                     cvector_push_back(repeat, group[i]);
                 }
                 cvector_push_back(REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM], group[i]);
@@ -245,7 +245,7 @@ int repo_exam(KshParser *parser)
             group = REPO.fc_groups[FLASH_CARD_GROUP_KIND_EXAM];
             size = cvector_size(group);
             for (i = 0; i < size; i++) {
-                if (!exam_fc_fn(group[i])) {
+                if (!exam_fc_fn(group[i], size-i, cvector_size(repeat))) {
                     cvector_push_back(repeat, group[i]);
                 }
             }
@@ -253,7 +253,7 @@ int repo_exam(KshParser *parser)
 
         while (cvector_size(repeat)) {
             for (i = 0; i < cvector_size(repeat);) {
-                if (exam_fc_fn(repeat[i])) {
+                if (exam_fc_fn(repeat[i], 0, cvector_size(repeat))) {
                     cvector_erase(repeat, i);
                 } else i++;
             }
@@ -318,8 +318,9 @@ int main(int argc, char **argv)
 
 
 
-static bool exam_fc_simple(FlashCard fc)
+static bool exam_fc_simple(FlashCard fc, size_t remains, size_t repetition)
 {
+    printf("Remains: %zu; Repetition: %zu\n", remains, repetition);
     printf(STRV_FMT, STRV_ARG(fc.label));
     fgetc(stdin);
     printf(STRV_FMT, STRV_ARG(fc.transcript));
@@ -350,13 +351,16 @@ static void render_fc_tui(void)
 }
 
 // assumes that ncurses is initialized
-static bool exam_fc_tui(FlashCard fc)
+static bool exam_fc_tui(FlashCard fc, size_t remains, size_t repetition)
 {
     clear();
     box(stdscr, 0, 0);
 
     mvprintw(1, (getmaxx(stdscr) - fc.label.len)*0.5,
              STRV_FMT, STRV_ARG(fc.label));
+
+    mvprintw(getmaxy(stdscr)-1, 2, "Remains: %zu Repetition: %zu",
+             remains, repetition);
 
     ITEM *menu_items[] = {
         new_item("hard", ""),
@@ -382,6 +386,8 @@ static bool exam_fc_tui(FlashCard fc)
     set_menu_items(menu, menu_items);
     set_menu_format(menu, 1, 2);
     box(stdscr, 0, 0);
+    mvprintw(getmaxy(stdscr)-1, 2, "Remains: %zu Repetition: %zu",
+             remains, repetition);
     post_menu(menu);
 
     int c;
