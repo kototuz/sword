@@ -504,6 +504,7 @@ static void repo_load(StrView repo_name)
 }
 
 
+// TODO: use just malloc instead of cvector.h
 // TODO: random cards
 // TODO: card limit per exam
 // TODO: maybe remove the `card` subcommand
