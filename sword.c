@@ -510,6 +510,7 @@ static void repo_load(StrView repo_name)
 }
 
 
+// TODO: card rating
 // TODO: use just malloc instead of cvector.h
 // TODO: random cards
 // TODO: card limit per exam
