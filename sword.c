@@ -499,8 +499,5 @@ static void repo_load(StrView repo_name)
 
 
 // TODO: card rating
-// TODO: random cards
 // TODO: card limit per exam
 // TODO: maybe remove the `card` subcommand
-// TODO: rewrite tests in C
-// TODO: we shouldn't use `scanf()` for numbers
