@@ -1,4 +1,3 @@
-#!/bin/sh
 
 CC="gcc"
 CFLAGS="-Wall -Wextra -Wpedantic -std=c17 -g"
@@ -10,9 +9,29 @@ mkdir -p repos.d
 
 $CC $CFLAGS -o sword.out $SRC $LIB_SRC -lncursesw -lmenuw
 
-print_and_execute() {
-    eval $2="$($1)"
-    printf "TEST: %-44s" "$1"
+assert() {
+    local test="$1"
+    local msg="$2"
+
+    if [ $test ]; then
+        return 0
+    else
+        echo "FAILED: $msg"
+        return 1
+    fi
+}
+
+assert_eq() {
+    local op1="$1"
+    local op2="$2"
+    local msg="$3"
+
+    if [ "$1" = "$2" ]; then
+        return 0
+    else
+        echo "FAILED: $msg"
+        return 1
+    fi
 }
 
 if [ "$1" = "test" ]; then
@@ -20,53 +39,23 @@ if [ "$1" = "test" ]; then
 
 
 
-    # new repo
-    print_and_execute "./sword.out repo new +n test" return
-    if [ -f ./repos.d/test ] && [ "$(sed '1q;d' ./repos.d/test)" = "0" ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
+    ./sword.out repo new +n test
+    assert "-f ./repos.d/test" "creating new repo"
+    assert_eq "$(sed '1q;d' ./repos.d/test)" "0 0 0" "initializing new repo with defaults"
 
-    # new card
-    print_and_execute "./sword.out card new +r test +l yes +t da" return
-    if [ "$(sed '2q;d' ./repos.d/test)" = "yes=da" ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
+    ./sword.out card new +r test +l yes +t da
+    assert_eq "$(sed '2q;d' ./repos.d/test)" "yes=da" "creating new flaschard"
 
-    # dump repo
-    print_and_execute "./sword.out repo dump +n test" return
-    if [ "$return" = "0" ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
+    assert_eq "$(./sword.out repo dump +n test)" "$(echo -e "5 0 1\nyes=da")" "repo dumping"
 
-    # del card
-    print_and_execute "./sword.out card del +r test +l yes" return
-    if [ ! "$(sed '1q;d' ./repos.d/test)" = "yes=da" ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
+    ./sword.out card del +r test +l yes
+    assert_eq "" "" "deleting a flashcard"
 
-    # display all repos
-    print_and_execute "./sword.out repo list" return
-    if [ "$return" = "test" ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
+    assert_eq "$(./sword.out repo list)" "test" "list all repos"
 
-    # del repo
-    print_and_execute "./sword.out repo del +n test" return
-    if [ ! -f ./repos.d/test ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
+    ./sword.out repo del +n test
+    assert "! -f ./repos.d/test"
+
 
 
     rm -f ./repos.d/*
