@@ -107,7 +107,7 @@ int card_del(KshParser *parser)
         for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
             if (strv_eq(l, it->label)) {
                 REPO.textbuf_size -= it->label.len + it->transcript.len;
-                *it = *(REPO.fcs_end++ - 1);
+                *it = *(--REPO.fcs_end);
                 repo_store();
                 return 0;
             }
