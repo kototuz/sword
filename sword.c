@@ -266,7 +266,8 @@ int manage_repos(KshParser *parser)
             KSH_SUBCMD(repo_dump, "dump", "dump repo to stdout"),
             KSH_SUBCMD(repo_list, "list", "list all repositories"),
             KSH_SUBCMD(repo_exam, "exam", "examine repo"),
-        )
+        ),
+        .help = "manage repos"
     });
 
     return 0;
@@ -277,8 +278,9 @@ int manage_cards(KshParser *parser)
     ksh_parse_args(parser, &(KshArgs){
         .subcmds = KSH_SUBCMDS(
             KSH_SUBCMD(card_new, "new", "create new card"),
-            KSH_SUBCMD(card_del, "del", "delete card")
-        )
+            KSH_SUBCMD(card_del, "del", "delete card"),
+        ),
+        .help = "manage cards"
     });
 
     return 0;
