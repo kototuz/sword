@@ -62,10 +62,10 @@ if [ "$1" = "test" ]; then
 elif [ "$1" = "test-preset" ]; then
     rm -f ./repos.d/*
     ./sword.out repo new +n test
-    ./sword.out card new +r test +l yes +t da
-    ./sword.out card new +r test +l no +t net
-    ./sword.out card new +r test +l here +t tut
-    ./sword.out card new +r test +l train +t poezd
+    ./sword.out card new +r test +l yes +t да
+    ./sword.out card new +r test +l no +t нет
+    ./sword.out card new +r test +l here +t тут
+    ./sword.out card new +r test +l train +t поезд
 elif [ "$1" = "r" ]; then
     ./sword.out $(echo "$@" | sed -e 's/\<'$1'\>//g')
 fi
