@@ -35,6 +35,7 @@ typedef enum {
 
 
 static void *alloc(size_t size);
+static size_t cstr_wc_len(const char *cstr, size_t len);
 
 static FILE *open_repo(StrView repo_name, const char *mode);
 static char *get_repo_path(StrView repo_name);
@@ -348,7 +349,7 @@ static bool exam_fc_tui(FlashCard fc, size_t remains, size_t repetition)
     clear();
     box(stdscr, 0, 0);
 
-    mvprintw(1, (getmaxx(stdscr) - fc.label.len)*0.5,
+    mvprintw(1, (getmaxx(stdscr) - cstr_wc_len(fc.label.items, fc.label.len))*0.5,
              STRV_FMT, STRV_ARG(fc.label));
 
     mvprintw(getmaxy(stdscr)-1, 2, "Remains: %zu Repetition: %zu",
@@ -368,7 +369,7 @@ static bool exam_fc_tui(FlashCard fc, size_t remains, size_t repetition)
 
     while (getch() != 10) {}
 
-    mvprintw(2, (getmaxx(stdscr) - fc.transcript.len)*0.5,
+    mvprintw(2, (getmaxx(stdscr) - cstr_wc_len(fc.transcript.items, fc.transcript.len))*0.5,
              STRV_FMT, STRV_ARG(fc.transcript));
 
     free_item(menu_items[2]);
@@ -428,6 +429,16 @@ static void *alloc(size_t size)
     if (!result) {
         perror("ERROR: could not allocate memory");
         exit(1);
+    }
+
+    return result;
+}
+
+size_t cstr_wc_len(const char *cstr, size_t len)
+{
+    size_t result = 0;
+    for (size_t i = 0; i < len; result++) {
+        i +=  mblen(&cstr[i], MB_CUR_MAX);
     }
 
     return result;
