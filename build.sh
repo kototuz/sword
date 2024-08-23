@@ -44,9 +44,9 @@ if [ "$1" = "test" ]; then
     assert_eq "$(sed '1q;d' ./repos.d/test)" "0 0 0" "initializing new repo with defaults"
 
     ./sword.out card new +r test +l yes +t da
-    assert_eq "$(sed '2q;d' ./repos.d/test)" "yes=da" "creating new flaschard"
+    assert_eq "$(sed '2q;d' ./repos.d/test)" "0 yes=da" "creating new flaschard"
 
-    assert_eq "$(./sword.out repo dump +n test)" "$(echo -e "5 0 1\nyes=da")" "repo dumping"
+    assert_eq "$(./sword.out repo dump +n test)" "$(echo -e "5 0 1\n0 yes=da")" "repo dumping"
 
     ./sword.out card del +r test +l yes
     assert_eq "" "" "deleting a flashcard"

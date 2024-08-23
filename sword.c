@@ -17,6 +17,7 @@
 
 #define REPOS_DIR "./repos.d/"
 
+#define MAX_RATING 10
 
 
 typedef int Err;
@@ -24,6 +25,8 @@ typedef int Err;
 typedef struct {
     StrView label;
     StrView transcript;
+    size_t cur_rating;
+    size_t new_rating;
 } FlashCard;
 
 typedef enum {
@@ -84,7 +87,7 @@ int card_new(KshParser *parser)
         }
 
         REPO.textbuf_size += l.len + t.len;
-        *REPO.fcs_end++ = (FlashCard){ l, t };
+        *REPO.fcs_end++ = (FlashCard){ l, t, 0, 0 };
     }
     repo_store();
 
@@ -236,9 +239,19 @@ int repo_exam(KshParser *parser)
         bool *ok;
         FlashCard *it;
         size_t repeat_count = 0;
-        for (it = begin, ok = ok_info; it != end; it++, ok++) {
-            if (!(*ok = exam_fc_fn(*it, end - it, repeat_count))) {
-                repeat_count++;
+        size_t remains = end - begin;
+
+        for (size_t rating = 0; rating <= MAX_RATING; rating++) {
+            for (it = begin, ok = ok_info; it != end; it++, ok++) {
+                if (it->cur_rating != rating) continue;
+                if (!(*ok = exam_fc_fn(*it, remains, repeat_count))) {
+                    repeat_count++;
+                    it->new_rating -= it->new_rating > 0 ? 1 : 0;
+                } else {
+                    it->new_rating += it->new_rating < MAX_RATING ? 1 : 0;
+                }
+
+                remains--;
             }
         }
 
@@ -248,6 +261,7 @@ int repo_exam(KshParser *parser)
                 else if (exam_fc_fn(*it, 0, repeat_count)) {
                     *ok = true;
                     repeat_count--;
+                    it->new_rating++;
                 }
             }
         }
@@ -456,7 +470,8 @@ static void repo_store()
 
     for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
         fprintf(repo_file,
-                STRV_FMT"="STRV_FMT"\n",
+                "%zu "STRV_FMT"="STRV_FMT"\n",
+                it->new_rating,
                 STRV_ARG(it->label),
                 STRV_ARG(it->transcript));
     }
@@ -489,6 +504,9 @@ static void repo_load(StrView repo_name)
     char *buf = REPO.textbuf;
     for (FlashCard *it = REPO.fcs_begin; it != REPO.fcs_end; it++) {
         FlashCard new_fc = {0};
+
+        fscanf(repo_file, "%zu ", &new_fc.cur_rating);
+        new_fc.new_rating = new_fc.cur_rating;
 
         new_fc.label.items = buf;
         while ((symbol = fgetc(repo_file)) != '=') {
