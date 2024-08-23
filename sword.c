@@ -392,6 +392,7 @@ static bool exam_fc_tui(FlashCard fc, size_t remains, size_t repetition)
     set_menu_sub(menu, derwin(stdscr, 0, 0, getmaxy(stdscr)-1, (getmaxx(stdscr)-9)*0.5));
     set_menu_items(menu, menu_items);
     set_menu_format(menu, 1, 2);
+    set_current_item(menu, menu_items[1]);
     box(stdscr, 0, 0);
     mvprintw(getmaxy(stdscr)-1, 2, "Remains: %zu Repetition: %zu",
              remains, repetition);
