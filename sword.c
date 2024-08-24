@@ -18,6 +18,7 @@
 #define REPOS_DIR "./repos.d/"
 
 #define MAX_RATING 10
+#define CARD_LIMIT 30
 
 
 typedef int Err;
@@ -240,18 +241,17 @@ int repo_exam(KshParser *parser)
         FlashCard *it;
         size_t repeat_count = 0;
         size_t remains = end - begin;
-
+        remains = remains > CARD_LIMIT ? CARD_LIMIT : remains;
         for (size_t rating = 0; rating <= MAX_RATING; rating++) {
-            for (it = begin, ok = ok_info; it != end; it++, ok++) {
+            for (it = begin, ok = ok_info; it != end && remains > 0; it++, ok++) {
                 if (it->cur_rating != rating) continue;
+                remains--;
                 if (!(*ok = exam_fc_fn(*it, remains, repeat_count))) {
                     repeat_count++;
                     it->new_rating -= it->new_rating > 0 ? 1 : 0;
                 } else {
                     it->new_rating += it->new_rating < MAX_RATING ? 1 : 0;
                 }
-
-                remains--;
             }
         }
 
@@ -531,5 +531,4 @@ static void repo_load(StrView repo_name)
 
 
 // TODO: card rating
-// TODO: card limit per exam
 // TODO: maybe remove the `card` subcommand
