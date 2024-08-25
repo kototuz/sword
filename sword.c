@@ -1,5 +1,4 @@
 #include "kovsh/kovsh.h"
-#include "cvector.h"
 
 #define _XOPEN_SOURCE 700
 #include <ncursesw/ncurses.h>
