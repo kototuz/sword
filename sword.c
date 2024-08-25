@@ -247,32 +247,72 @@ int repo_exam(KshParser *parser)
         size_t *repetition, repetition_count = 0;
         size_t i;
 
+        { // first exam
+            remains = (FC_BUF_SIZE > 30 ? 30 : FC_BUF_SIZE) - 2;
+            repetition = (size_t *) calloc(remains+1, sizeof(size_t));
+            for (int lvl = 0; lvl < LEVELS_COUNT; lvl++) {
+                for (i = REPO.fc_groups[lvl].beg_idx; i < REPO.fc_groups[lvl].end_idx; i++) {
+                    if (!exam_fc_fn(REPO.fc_buf[i], remains, repetition_count)) {
+                        repetition[repetition_count++] = i;
+                        REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_DOWN;
+                    } else if (lvl != LEVELS_COUNT-1) {
+                        REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_UP;
+                    }
 
-        remains = (FC_BUF_SIZE > 30 ? 30 : FC_BUF_SIZE) - 2;
-        repetition = (size_t *) calloc(remains+1, sizeof(size_t));
-        for (int lvl = 0; lvl < LEVELS_COUNT; lvl++) {
-            for (i = REPO.fc_groups[lvl].beg_idx; i < REPO.fc_groups[lvl].end_idx; i++) {
-                if (!exam_fc_fn(REPO.fc_buf[i], remains, repetition_count)) {
-                    repetition[repetition_count++] = i;
-                    REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_DOWN;
-                } else if (lvl != LEVELS_COUNT-1) {
-                    REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_UP;
+                    remains--;
                 }
-
-                remains--;
             }
         }
 
-        while (repetition_count) {
-            for (i = 0; i < repetition_count;) {
-                if (exam_fc_fn(REPO.fc_buf[repetition[i]], 0, repetition_count-1)) {
-                    repetition[i] = repetition[--repetition_count];
-                    REPO.fc_buf[repetition[i]].lvl_move = FC_LEVEL_MOVE_NONE;
-                } else i++;
+        { // repeating the hard words
+            while (repetition_count) {
+                for (i = 0; i < repetition_count;) {
+                    if (exam_fc_fn(REPO.fc_buf[repetition[i]], 0, repetition_count-1)) {
+                        repetition[i] = repetition[--repetition_count];
+                    } else i++;
+                }
             }
+            free(repetition);
         }
 
-        free(repetition);
+        { // rearrange words depending on `lvl_move`
+            FlashCard tmp;
+            for (int lvl = 0; lvl < LEVELS_COUNT; lvl++) {
+                for (i = REPO.fc_groups[lvl].beg_idx; i < REPO.fc_groups[lvl].end_idx;) {
+                    switch (REPO.fc_buf[i].lvl_move) {
+                        case FC_LEVEL_MOVE_NONE:
+                            break;
+                        case FC_LEVEL_MOVE_DOWN:
+                            if (lvl == 0) break;
+                            if (i != REPO.fc_groups[lvl].beg_idx) {
+                                tmp = REPO.fc_buf[i];
+                                tmp.lvl_move = FC_LEVEL_MOVE_NONE;
+                                REPO.fc_buf[i] = REPO.fc_buf[REPO.fc_groups[lvl].beg_idx];
+                                REPO.fc_buf[REPO.fc_groups[lvl].beg_idx] = tmp;
+                            } else {
+                                REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_NONE;
+                            }
+                            REPO.fc_groups[lvl-1].end_idx++;
+                            REPO.fc_groups[lvl].beg_idx++;
+                            continue;
+                        case FC_LEVEL_MOVE_UP:
+                            if (lvl == LEVELS_COUNT-1) break;
+                            if (i != REPO.fc_groups[lvl].end_idx-1) {
+                                tmp = REPO.fc_buf[i];
+                                tmp.lvl_move = FC_LEVEL_MOVE_NONE;
+                                REPO.fc_buf[i] = REPO.fc_buf[REPO.fc_groups[lvl].end_idx-1];
+                                REPO.fc_buf[REPO.fc_groups[lvl].end_idx-1] = tmp;
+                            } else {
+                                REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_NONE;
+                            }
+                            REPO.fc_groups[lvl+1].beg_idx--;
+                            REPO.fc_groups[lvl].end_idx--;
+                            continue;
+                    }
+                    i++;
+                }
+            }
+        }
     }
     repo_store();
 
@@ -474,52 +514,17 @@ static void repo_store()
     fprintf(repo_file, "%zu\n", REPO.textbuf_size);
 
     size_t i;
-    FlashCard tmp;
-    for (int lvl = 0; lvl < LEVELS_COUNT; lvl++) {
-        for (i = REPO.fc_groups[lvl].beg_idx; i < REPO.fc_groups[lvl].end_idx;) {
-            switch (REPO.fc_buf[i].lvl_move) {
-                case FC_LEVEL_MOVE_NONE:
-                    break;
-                case FC_LEVEL_MOVE_DOWN:
-                    if (lvl == 0) break;
-                    if (i != REPO.fc_groups[lvl].beg_idx) {
-                        tmp = REPO.fc_buf[i];
-                        tmp.lvl_move = FC_LEVEL_MOVE_NONE;
-                        REPO.fc_buf[i] = REPO.fc_buf[REPO.fc_groups[lvl].beg_idx];
-                        REPO.fc_buf[REPO.fc_groups[lvl].beg_idx] = tmp;
-                    } else {
-                        REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_NONE;
-                    }
-                    REPO.fc_groups[lvl-1].end_idx++;
-                    REPO.fc_groups[lvl].beg_idx++;
-                    continue;
-                case FC_LEVEL_MOVE_UP:
-                    if (lvl == LEVELS_COUNT-1) break;
-                    if (i != REPO.fc_groups[lvl].end_idx-1) {
-                        tmp = REPO.fc_buf[i];
-                        tmp.lvl_move = FC_LEVEL_MOVE_NONE;
-                        REPO.fc_buf[i] = REPO.fc_buf[REPO.fc_groups[lvl].end_idx-1];
-                        REPO.fc_buf[REPO.fc_groups[lvl].end_idx-1] = tmp;
-                    } else {
-                        REPO.fc_buf[i].lvl_move = FC_LEVEL_MOVE_NONE;
-                    }
-                    REPO.fc_groups[lvl+1].beg_idx--;
-                    REPO.fc_groups[lvl].end_idx--;
-                    continue;
-            }
-            i++;
-        }
-    }
-
     for (i = 0; i < LEVELS_COUNT; i++) {
         fprintf(repo_file, "%zu\n",
                 REPO.fc_groups[i].end_idx - REPO.fc_groups[i].beg_idx);
     }
 
-    for (i = FC_BUF_BEGIN; i < FC_BUF_SIZE; i++) {
-        fprintf(repo_file, STRV_FMT"="STRV_FMT"\n",
-                STRV_ARG(REPO.fc_buf[i].label),
-                STRV_ARG(REPO.fc_buf[i].transcript));
+    for (int lvl = 0; lvl < LEVELS_COUNT; lvl++) {
+        for (size_t i = REPO.fc_groups[lvl].beg_idx; i < REPO.fc_groups[lvl].end_idx; i++) {
+            fprintf(repo_file, STRV_FMT"="STRV_FMT"\n",
+                    STRV_ARG(REPO.fc_buf[i].label),
+                    STRV_ARG(REPO.fc_buf[i].transcript));
+        }
     }
 
     free(REPO.fc_buf);
