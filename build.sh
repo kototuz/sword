@@ -46,6 +46,8 @@ if [ "$1" = "test" ]; then
     ./sword.out card new +r test +l yes +t da
     assert_eq "$(sed '12q;d' ./repos.d/test)" "yes=da" "creating new flaschard"
 
+    assert_eq "$(./sword.out card find +v yes +r test)" "yes=da" "finding card"
+
     ./sword.out card del +r test +l yes
     assert_eq "$(sed '12q;d' ./repos.d/test)" "" "deleting a flashcard"
 

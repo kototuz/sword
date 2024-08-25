@@ -26,6 +26,7 @@ Run:
 ./sword.out repo exam +n <name> [-tui]
 ./sword.out card new +r <repo> +l <label> +t <transcript>
 ./sword.out card del +r <repo> +l <label>
+./sword.out card find +r <repo> +v <value> [-transcript]
 ```
 To get help use `-help` flag after a command
 

@@ -143,6 +143,47 @@ int card_del(KshParser *parser)
     return 1;
 }
 
+int card_find(KshParser *parser)
+{
+    StrView r; // source repo
+    StrView v; // find pattern value
+    bool transcript;
+
+    ksh_parse_args(parser, &(KshArgs){
+        .flags = KSH_FLAGS(KSH_FLAG(transcript, "find by transcript?")),
+        .params = KSH_PARAMS(
+            KSH_PARAM(v, "find pattern"),
+            KSH_PARAM(r, "source repo")
+        ),
+    });
+
+    repo_load(r);
+    {
+        if (transcript) {
+            for (size_t i = FC_BUF_BEGIN; i < FC_BUF_SIZE; i++) {
+                if (strv_eq(v, REPO.fc_buf[i].transcript)) {
+                    printf(STRV_FMT"="STRV_FMT"\n",
+                            STRV_ARG(REPO.fc_buf[i].label),
+                            STRV_ARG(v));
+                    return 0;
+                }
+            }
+        } else {
+            for (size_t i = FC_BUF_BEGIN; i < FC_BUF_SIZE; i++) {
+                if (strv_eq(v, REPO.fc_buf[i].label)) {
+                    printf(STRV_FMT"="STRV_FMT"\n",
+                            STRV_ARG(v),
+                            STRV_ARG(REPO.fc_buf[i].transcript));
+                    return 0;
+                }
+            }
+        }
+    }
+    repo_store();
+
+    return 0;
+}
+
 int repo_new(KshParser *parser)
 {
     StrView n; // name
@@ -341,6 +382,7 @@ int manage_cards(KshParser *parser)
         .subcmds = KSH_SUBCMDS(
             KSH_SUBCMD(card_new, "new", "create new card"),
             KSH_SUBCMD(card_del, "del", "delete card"),
+            KSH_SUBCMD(card_find, "find", "find card"),
         ),
         .help = "manage cards"
     });
