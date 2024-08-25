@@ -41,15 +41,13 @@ if [ "$1" = "test" ]; then
 
     ./sword.out repo new +n test
     assert "-f ./repos.d/test" "creating new repo"
-    assert_eq "$(sed '1q;d' ./repos.d/test)" "0 0 0" "initializing new repo with defaults"
+    assert_eq "$(./sword.out repo dump +n test)" "$(echo -e "0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n")" "initializing new repo with defaults"
 
     ./sword.out card new +r test +l yes +t da
-    assert_eq "$(sed '2q;d' ./repos.d/test)" "0 yes=da" "creating new flaschard"
-
-    assert_eq "$(./sword.out repo dump +n test)" "$(echo -e "5 0 1\n0 yes=da")" "repo dumping"
+    assert_eq "$(sed '12q;d' ./repos.d/test)" "yes=da" "creating new flaschard"
 
     ./sword.out card del +r test +l yes
-    assert_eq "" "" "deleting a flashcard"
+    assert_eq "$(sed '12q;d' ./repos.d/test)" "" "deleting a flashcard"
 
     assert_eq "$(./sword.out repo list)" "test" "list all repos"
 
