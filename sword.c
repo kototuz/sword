@@ -83,7 +83,8 @@ int card_new(KshParser *parser)
             KSH_PARAM(l, "flashcard label"),
             KSH_PARAM(t, "flaschard transcript"),
             KSH_PARAM(r, "target repo")
-        )
+        ),
+        .help = "Create new card"
     }); 
 
     repo_load(r);
@@ -114,8 +115,9 @@ int card_del(KshParser *parser)
     ksh_parse_args(parser, &(KshArgs){
         .params = KSH_PARAMS(
             KSH_PARAM(r, "repo"),
-            KSH_PARAM(l, "flashcard label")
-        )
+            KSH_PARAM(l, "flashcard label"),
+        ),
+        .help = "Delete card"
     });
 
     repo_load(r);
@@ -155,6 +157,7 @@ int card_find(KshParser *parser)
             KSH_PARAM(v, "find pattern"),
             KSH_PARAM(r, "source repo")
         ),
+        .help = "Find card"
     });
 
     repo_load(r);
@@ -189,7 +192,8 @@ int repo_new(KshParser *parser)
     StrView n; // name
 
     ksh_parse_args(parser, &(KshArgs){
-        .params = KSH_PARAMS(KSH_PARAM(n, "new repo name"))
+        .params = KSH_PARAMS(KSH_PARAM(n, "new repo name")),
+        .help = "Create new repo"
     });
 
     FILE* new_repo = open_repo(n, "w");
@@ -207,7 +211,8 @@ int repo_del(KshParser *parser)
     StrView n; // name
 
     ksh_parse_args(parser, &(KshArgs){
-        .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
+        .params = KSH_PARAMS(KSH_PARAM(n, "repo name")),
+        .help = "Delete repo"
     });
 
     char *repo_path = get_repo_path(n);
@@ -226,6 +231,10 @@ int repo_del(KshParser *parser)
 int repo_list(KshParser *parser)
 {
     (void) parser;
+
+    ksh_parse_args(parser, &(KshArgs){
+        .help = "List all repositories"
+    });
 
     DIR *d = opendir(REPOS_DIR);
     if (!d) {
@@ -248,7 +257,8 @@ int repo_dump(KshParser *parser)
     StrView n; // repo name
 
     ksh_parse_args(parser, &(KshArgs){
-        .params = KSH_PARAMS(KSH_PARAM(n, "repo name"))
+        .params = KSH_PARAMS(KSH_PARAM(n, "repo name")),
+        .help = "Dump repo to stdout"
     });
 
     FILE* repo = open_repo(n, "r");
@@ -268,7 +278,8 @@ int repo_exam(KshParser *parser)
 
     ksh_parse_args(parser, &(KshArgs){
         .params = KSH_PARAMS(KSH_PARAM(n, "repo name")),
-        .flags = KSH_FLAGS(KSH_FLAG(tui, "Enable tui?"))
+        .flags = KSH_FLAGS(KSH_FLAG(tui, "Enable tui?")),
+        .help = "Examine repo"
     });
 
     bool (*exam_fc_fn)(FlashCard, size_t, size_t);
@@ -370,7 +381,7 @@ int manage_repos(KshParser *parser)
             KSH_SUBCMD(repo_list, "list", "list all repositories"),
             KSH_SUBCMD(repo_exam, "exam", "examine repo"),
         ),
-        .help = "manage repos"
+        .help = "Manage repos"
     });
 
     return 0;
@@ -384,7 +395,7 @@ int manage_cards(KshParser *parser)
             KSH_SUBCMD(card_del, "del", "delete card"),
             KSH_SUBCMD(card_find, "find", "find card"),
         ),
-        .help = "manage cards"
+        .help = "Manage cards"
     });
 
     return 0;
@@ -397,7 +408,8 @@ int root(KshParser *parser)
         .subcmds = KSH_SUBCMDS(
             KSH_SUBCMD(manage_cards, "card", "manage cards"),
             KSH_SUBCMD(manage_repos, "repo", "manage repos"),
-        )
+        ),
+        .help = "Flashcard CLI tool written to help remember things :-)"
     });
 
     return 0;
@@ -620,5 +632,4 @@ static void repo_load(StrView repo_name)
 }
 
 
-// TODO: card rating
 // TODO: maybe remove the `card` subcommand

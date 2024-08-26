@@ -7,6 +7,7 @@ A flashcard CLI tool powered by [kovsh](https://github.com/zone-11/kovsh)
 git clone --recursive https://github.com/zone-11/sword.git
 ```
 Ensure that `ncurses` is installed
+
 Build:
 ``` console
 ./build.sh
